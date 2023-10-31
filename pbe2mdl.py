@@ -11,6 +11,7 @@ def v2s(vector,sep=', '):
   return '[' + sep.join(map(str,vector)) + ']'
 
 def m2ss(matrix,sep='\n',ffmt=':19.15f',prefix='     '):
+  """Matrix to multi-line string"""
   fmt = ffmt.join('{0 }'.split())
   return '\n'.join(
          [prefix + '[' + ', '.join([fmt.format(v) for v in row]) + ']'
@@ -19,7 +20,21 @@ def m2ss(matrix,sep='\n',ffmt=':19.15f',prefix='     '):
          )
 
 ########################################################################
+### create a vector from three floats
 makevec = lambda seq: sp.vequ(list(map(float,seq[:3])))
+
+
+########################################################################
+### Build a data label
+def getDataLbl(fn,nLbl,nNameLbl,userLabelArg,vArr):
+  textureFn = fn
+  return nLbl and 'DataTx' or 'Data',nLbl and f"""
+    Texture
+      RGB {textureFn}
+      Parm AA
+      Parm Transp
+    EndTexture
+""".lstrip('\r\n') or ''
 
 
 ########################################################################
@@ -37,17 +52,18 @@ def pbe2mdl( abcArg
            , wrlArg=False
            , debugArg=None
            ):
+  """Write STK MDL of Plumped Bumped Ellipse (PBE)"""
 
+  ### Misc constants
   dpr,halfpi,onepi,twopi = sp.dpr(),sp.halfpi(),sp.pi(),sp.twopi()
   res = float(resolutionArg)
   nlon0 = round(360e0 / res)
   nlat0 = round(180e0 / res) + 1
 
+  ### Initialize provenance strings
   sigmaMultiple = baseSigmas = sUNKNOWN = 'UNKNOWN'
   satRTN = pluRTN = pluRTNSrc = xKinetxCall = sUNKNOWN
   pbecalcSuccess = False
-
-  abc = None
 
   try:
     ### 3-element ABC from input argument sequence
@@ -71,9 +87,11 @@ def pbe2mdl( abcArg
 
     iWhichPbeArr = int(iWhichPbeArrArg)
 
+    ### Get provenance string from KinetX object
     try: xKinetxCall = abcArg.kinetx.KinetxCall
     except: pass
 
+    ### Get success string from KinetX object
     try: pbecalcSuccess = abcArg.success
     except: pass
 
@@ -112,21 +130,29 @@ def pbe2mdl( abcArg
   dtSc = float(downtrackScaleArg)
   utSc = float(uptrackScaleArg)
 
+  ######################################################################
+  ### Build parallels array of latitudes
+
   latsArr = (numpy.arange(nlat0,dtype=numpy.float64) * sp.pi() / (nlat0-1)) - halfpi
 
+  ### Build array with number of longitude vertices per parallel
+
   nlonsArr = numpy.round(nlon0 * numpy.cos(latsArr)).astype(numpy.int)
+
+  ### Ensure there are at least six vertices per parallel, except at the
+  ### two poles, which have one each
+
   iw = numpy.where(nlonsArr < 6)
   if iw[0].shape: nlonsArr[iw]=6
   nLon = nlonsArr[0] = nlonsArr[-1] = 1
+
+  ### Build the starting and ending vertices' indices at each parallel
+
   nextLonIdx = numpy.cumsum(nlonsArr)
   firstLonIdx = numpy.insert(nextLonIdx[:-1],0,0)
 
-  #print(nlonsArr)
-  #print(firstLonIdx)
-  #print(nextLonIdx)
-
   ######################################################################
-  ### vertices:  index, lon, lat, normal to ellipse => surface point +R => XYZ
+  ### Calculate vertices' Cartesian coordinates
 
   nV = nextLonIdx[-1]
   vArr = [VERTEX(idx,abc,dtSc,utSc,r) for idx in range(nV)]
@@ -140,7 +166,7 @@ def pbe2mdl( abcArg
     v.set_normal(xLat,xLon).calculate()
 
   ######################################################################
-  ### connection list
+  ### Build polygon (triangle) list; each polygon ha 3 vertex indices
 
   nC = (2 * nV) - 4
 
@@ -150,11 +176,15 @@ def pbe2mdl( abcArg
 
   connArr = [CONN(idx) for idx in range(nC)]
 
+  ### Initialize quantities for loop
+
   botLat = 0
   topLat = botLat + 1
   nLonBot = nlonsArr[botLat]
   nLonTop = nlonsArr[topLat]
   offsetBot = offsetTop = sumBot = sumTop = 0
+
+  ### Loop over polygons
 
   for conn in connArr:
 
@@ -202,7 +232,7 @@ def pbe2mdl( abcArg
       offsetTop += 1
       middleIdx = firstLonIdx[topLat] + (offsetTop % nLonTop)
       sumTop = nextSumTop
-    
+
     ### Insert the middle vertex, write it to the connection
     triple.insert(1,middleIdx)
     #print((botLat,topLat,offsetBot,offsetTop,triple,))
@@ -219,48 +249,17 @@ def pbe2mdl( abcArg
     nLonTop = nlonsArr[topLat]
     offsetBot = offsetTop = sumBot = sumTop = 0
 
-    ### restart the loop
-
-  """
-  topLat = 1
-  while topLat < nlat0:
-    botLat = topLat - 1
-    offsetBot = offsetTop = sumBot = sumTop = 0
-    nLonBot = nlonsArr[botLat]
-    nLonTop = nlonsArr[topLat]
-    while (offsetBot < nLonBot and nLonBot > 1
-          ) or (offsetTop < nLonTop and nLonTop > 1):
-      nextSumBot = sumBot + nLonTop
-      nextSumTop = sumTop + nLonBot
-      incBot = (offsetTop == nLonTop or nLonTop == 1
-               ) or (nextSumBot < nextSumTop
-               ) or (nextSumBot == nextSumTop and sumBot < sumTop
-               )
-      triple = [firstLonIdx[botLat] + (offsetBot % nLonBot)
-               ,firstLonIdx[topLat] + (offsetTop % nLonTop)
-               ]
-      if incBot:
-        offsetBot += 1
-        insertIdx = firstLonIdx[botLat] + (offsetBot % nLonBot)
-        sumBot = nextSumBot
-      else:
-        offsetTop += 1
-        insertIdx = firstLonIdx[topLat] + (offsetTop % nLonTop)
-        sumTop = nextSumTop
-      triple.insert(1,insertIdx)
-    topLat += 1
-  """
-
+    ### End of loop
 
   ######################################################################
-  ### Various constants
+  ### Various dimensional constants
 
   maxR2 = max([sp.vdot(v.xyz,v.xyz) for v in vArr])
   maxR = numpy.sqrt(maxR2)
   boundRad = str(maxR * 1040e0)  ### BoundRadius:  scale by 1000, add 4%
 
   ######################################################################
-  ### Description / comments
+  ### Build PBE description and provenancew as MDL comments
 
   commaj = ','.join
   fromsrc = lambda src:f' from {src}' if src else ''
@@ -279,6 +278,9 @@ def pbe2mdl( abcArg
                       [sp.kdata(i,'all')
                        for i in range(sp.ktotal('all'))
                       ]])
+
+  ### Description and provenance string
+
   descr = f"""
 ModelDesc
   Plumped Bumped Ellipse:
@@ -302,16 +304,18 @@ EndModelDesc""".replace('\n\n\n','\n'  ### Remove empty lines ...
 ).replace('\n\n','\n'                  ### ... and again
 ).replace('\n','\n### '                ### Make each line a comment
 ).lstrip()                             ### Remove initial newline
-  print(descr)
+  ###print(descr)
 
   with open(fn,'w') as fout:
     if wrlArg: pass
 
-    vts = [v2s(c.verts,' ') for c in connArr]
-    dataLbl = getDataLbl(fn,nNameLbl,userLabelArg,vArr)
+    ### Build vertex and vertices list strings
+    vtxs = [v2s(vtx.xyz,sep=" ").strip("[]") for vtx in vArr]
+    conns = [v2s(conn.verts,sep=' ').strip('[]') for conn in connArr]
+    dataLbl,texture = getDataLbl(fn,nLbl,nNameLbl,userLabelArg,vArr)
 
     rot = sp.m2eul(mtxJ2uLcl, 1, 2, 3)  ### ax, ay, az
-    rotStr = v2s(sp.vscl(dpr,rot))
+    rotStr = v2s(sp.vscl(dpr,rot),sep=' ').strip('[]')
 
     shin = 76e0
 
@@ -321,211 +325,98 @@ Yaxis/000255000/0   0 90
 Zaxis/000000255/0 -90  0
 """.strip().split('\n')]
 
-    axes = ['']
+    axes = ''
     for i in range(3):
-      axes.extend("""
-Component {axisStr[i][0]
+      axes += f"""
+Component {axisStr[i][0]}
   Translucency 0.67
-  FaceColor %{axisStr[i][1]
+  FaceColor %{axisStr[i][1]}
   Scale {r+abc[i]} 1 1
   Rotate {axisStr[i][2]}
   Refer
     Component BaseXaxis
   EndRefer
 EndComponent
-
-""".split('\n'))
-
 """
 
-    printf,lun, f='(a)'
-    , '# STK/VO 3D Model file'
-    , ''
-    , '### ' + [ 'ModelDesc', '  ' + descr , 'EndModelDesc']
-    , ''
-    , 'Component BaseXaxis'
-    , '  Revolve'
-    , '    StartAngle 0.0'
-    , '    EndAngle 360.0'
-    , '    NumRevolve 10'
-    , '    NumVerts 2'
-    , '    Data'
-    , '      0 10 0'
-    , '      1.03 10 0'
-    , '  EndRevolve'
-    , 'EndComponent'
-    , axes
-    , ''
-    , 'Component XYZaxes'
-    , '  Refer'
-    , '    Component Xaxis'
-    , '  EndRefer'
-    , '  Refer'
-    , '    Component Yaxis'
-    , '  EndRefer'
-    , '  Refer'
-    , '    Component Zaxis'
-    , '  EndRefer'
-    , 'EndComponent'
-    , ''
-    , 'Component PBE'
-    , '  PolygonMesh'
-    , '    FaceColor %255255255'
-    , '    SmoothShading No'
-    , '    BackfaceCullable Yes'
-    , '    Translucency 0.5'
-    , '    Specularity ' + strtrim(shin/128e0,2)
-    , '    Shininess ' + strtrim(shin,2)
-    , (nLbl eq 0L) ? '' : '    ' +
-      [ 'Texture'
-      , '  RGB ' + textureFn
-      , '  Parm ' + ( 1?['AA','Transp']:['AA','Transp','Mipmap','ClampS','ClampT'])
-      , 'EndTexture'
-      ]
-    , '    NumVerts ' + strtrim(n_elements(vArr),2)
-    , '    ' + dataLbl
-    , '      ' + pts
-    , '    NumPolys ' + strtrim(n_elements(cArr),2)
-    , '    Polys'
-    , '      3 ' + vts
-    , '  EndPolygonMesh'
-    , 'EndComponent'
-    , ''
-    , 'Component PBE_Rotated'
-    , '  Rotate ' + rotStr
-    , '  Refer'
-    , '    Component PBE'
-    , '  EndRefer'
-    , '  Refer'
-    , '    Component XYZaxes'
-    , '  EndRefer'
-    , 'EndComponent'
-    , ''
-    , 'Component PBE_ROOT'
-    , '  Root'
-    , '  UniformScale 1000.0' $       ### Convert km to m
-    , '  Refer'
-    , '    Component PBE_Rotated'
-    , '  EndRefer'
-    , '  #Refer' $                    ### J2000 axes removed
-    , '  #  Component XYZaxes'
-    , '  #EndRefer'
-    , 'EndComponent'
-    , 'BoundRadius ' + boundRad
+    fout.write(f"""
+# STK/VO 3D Model file
 
-  endif else begin
+{descr}
 
-    ####################################################################
-    ### - WRL
+Component BaseXaxis
+  Revolve
+    StartAngle 0.0
+    EndAngle 360.0
+    NumRevolve 10
+    NumVerts 2
+    Data
+      0 10 0
+      1.03 10 0
+  EndRevolve
+EndComponent
 
-    pts = strjoin( strtrim(vArr.xyz * 5e0 / maxR ,2), ' ')
-    vts = strjoin( strtrim(cArr.verts,2), ' ')
-    printf,lun, f='(a)'
-    , '#VRML V2.0 utf8'
-    , '### ' + [ '', 'Model description:', '  ' + descr, '']
-    , 'Shape {'
-    , '  geometry IndexedFaceSet {'
-    , '    ccw TRUE  ### East longitude'
-    , '    coord Coordinate {'
-    , '      point [ ' + pts[0]
-    , '            , ' + pts[1:*]
-    , '            ]'
-    , '    }'
-    , '    coordIndex [ ' + vts[0] + ' -1'
-    , '               , ' + vts[1:*] + ' -1'
-    , '               ]'
-    , '  }'
-    , '  appearance Appearance {'
-    , '    material Material { '
-    , '      diffuseColor .25 .25 .25 '
-    , '      emissiveColor .25 .25 .25 '
-    , '    }'
-    , '  }'
-    , '}'
-  endelse
-  free_lun,lun
+{axes}
 
-  return
-  message,'OK'
-end
-"""
+Component XYZaxes
+  Refer
+    Component Xaxis
+  EndRefer
+  Refer
+    Component Yaxis
+  EndRefer
+  Refer
+    Component Zaxis
+  EndRefer
+EndComponent
 
-"""
-    ########################################################################
-    ########################################################################
-    ### Test code
+Component PBE
+  PolygonMesh
+    FaceColor %255255255
+    SmoothShading No
+    BackfaceCullable Yes
+    Translucency 0.5
+    Specularity {shin/128e0}
+    Shininess {shin}
 
-      cspice_furnsh,'v_od059b.tm'
-      k=kinetxcurrent(target=999)
+{texture}
 
-      ###sigABC=[1378e0,66e0,33e0]
-      sigABC=kget(k,/KnSig)
-      sigABC2=sigABC * 2e0
+    NumVerts {nV}
+    {dataLbl}
+""".lstrip('\r\n'))
 
-      pbe2mdl, sigABC2, 91.0e0, 'pbetesthydra_2sigma.mdl', res=5e0, mtxJ2k=k.mJ2u
-      pbe2mdl, sigABC2, 91.0e0, 'pbetesthydra_2sigma.wrl', res=5e0, /wrl
+    for vtx in vtxs: fout.write(f'      {vtx}\n')
 
-      pbe2mdl, sigABC2, 76.8e0, 'pbetestnix_2sigma.mdl', res=5e0, mtxJ2k=k.mJ2u
-      pbe2mdl, sigABC2, 76.8e0, 'pbetestnix_2sigma.wrl', res=5e0, /wrl
+    fout.write(f"""
+    NumPolys {nC}
+    Polys
+""".lstrip('\r\n'))
 
-      sigTmp=[100e0,35,30]
-      pbe2mdl, sigTmp, 91.0e0, 'pbetestasymm.mdl', up=2.5e0, down=1.5e0, mtxJ2k=k.mJ2u
-      pbe2mdl, sigTmp, 91.0e0, 'pbetestasymm.wrl', up=2.5e0, down=1.5e0, /wrl
+    for conn in conns: fout.write(f'      3 {conn}\n')
 
-      hRTN=[ 64e0, 1512, 102]    ### Hydra
-      dEts=[-100e0,200,500]
-      pbecalcs,'903',dEts=dEts,satE=hRTN, debug=debug, pbeStr=pbe903
+    fout.write(f"""
+  EndPolygonMesh
+EndComponent
 
-      pbe2mdl, pbe903, 91e0, 'pbetesthydra_pbecalc_asymm.mdl', up=2.5, down=1.5
-      pbe2mdl, pbe903, 91e0, 'pbetesthydra_pbecalc_asymm.wrl', up=2.5, down=1.5, /wrl
+Component PBE_Rotated
+  Rotate {rotStr}
+  Refer
+    Component PBE
+  EndRefer
+  Refer
+    Component XYZaxes
+  EndRefer
+EndComponent
 
-      pbe2mdl, pbe903, 91e0, 'pbetest_texture00.mdl'
-             , up=2.5, down=1.5
-             , userLabel='Test User Label 00 '+['0','1']
-
-      pbe2mdl, pbe903, 91e0, 'pbetest_texture01.mdl'
-             , up=2.5, down=1.5
-             , /nameLabel
-
-      pbe2mdl, pbe903, 91e0, 'pbetest_texture02.mdl'
-             , up=2.5, down=1.5
-             , /nameLabel
-             , userLabel='Test User Label 02 '+['0','1']
-end
-
-"""
-def getDataLbl(fn,nNameLbl,userLabelArg,vArr):
-  return 'Data'
-  """
-
-  ######################################################################
-  ### Choose WRL or MDL
-
-  if keyword_set(wrlArg) eq 0b then begin
-
-    ####################################################################
-    ### - MDL
-
-    pts = strjoin( strtrim(vArr.xyz,2), ' ')
-
-    if nLbl gt 0L then begin
-      textureFn = fn
-      posSlash=strpos(textureFn,'/',/reverse_search)
-      posDot=strpos(textureFn,'.',/reverse_search)
-      if posDot gt (posSlash+1L) then textureFn = strmid(textureFn,0,posDot)
-      textureFn = textureFn + '.png'
-
-      lclLbls= nNameLbl ? strtrim(['',fn],2) : ['']
-      if nUserLbl gt 0L then lclLbls=[lclLbls,strtrim(userLabelArg[*],2)]
-      lclLbls = lclLbls[1:*]
-
-      u=transpose(vArr.lon/twopi)
-      v=transpose((vArr.lat+!dpi/2)/!dpi)
-      uv=strjoin(strtrim([u,v],2),' ')
-      pts = pts + ' ' + uv
-      dataLbl = 'DataTx'
-      write_png,textureFn, pbetext(lclLbls)
-    endif else begin
-      dataLbl = 'Data'
-    endelse
-"""
+Component PBE_ROOT
+  Root
+  UniformScale 1000.0
+  Refer
+    Component PBE_Rotated
+  EndRefer
+  #Refer
+  #  Component XYZaxes
+  #EndRefer
+EndComponent
+BoundRadius {boundRad}
+""".lstrip('\r\n'))
