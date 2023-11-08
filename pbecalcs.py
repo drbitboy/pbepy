@@ -1,3 +1,5 @@
+import collections
+import spiceypy as sp
 ########################################################################
 ### Plumped, Bumped Ellipsoid calculations
 ###
@@ -17,8 +19,8 @@ class PBESTRUCT:
 , kern=[]        ### STRING[], SPICE kernels to load and unload
 , ukoe=False     ### /ukoe = Unload SPICE Kernels On Exit
 , radi=None      ### DOUBLE, Target radius for bumping, km
-, UTCs=[]        ### STRING[], UTCs for which to calculate info
-, dEts=0e0       ### DOUBLE, delta ET to add to UTCs for times at which to calc
+, UTCsArg=[]     ### STRING[], UTCs for which to calculate info
+, dEtsArg=[]     ### DOUBLE, delta ET to add to UTCs for times at which to calc
 , sigm=None      ### DOUBLE[3], ell sigmas, km; dflt=>use kinetxcurrent(target=targArg)
 , mJ2u=None      ### DOUBLE[3,3], J2k to T],[LTOF]], dflt=> findvinf()
 , nSig=2e0       ### DOUBLE, Sigma multiple to use, dflt=2
@@ -79,13 +81,31 @@ class PBESTRUCT:
       self.pluEphemUncert = numpy.zeros(3,dtype=numpy.float64)
       self.pluEphemUncertSource = ''
 
-    except:
-"""
+      if isinstance(UTCsArg,str): UTCs = [UTCsArg]
+      else:
+        assert isinstance(UTCsArg,collections.Sequence)
+        UTCs = UTCsArg
+      nUTCs = len(UTCs)
 
-  if nUTCs eq 0L then begin
-    cspice_et2utc,kinetx.tca.et,'ISOC',3,UTCs
-    nUTCs = 1L
-  endif
+      if isinstance(dEtsArg,str): UTCs = [UTCsArg]
+      else:
+        assert isinstance(UTCsArg,collections.Sequence)
+        UTCs = UTCsArg
+      nUTCs = len(UTCs)
+      if nUTCs == 0:
+        UTCs = [sp.et2utc(kinetx.tca.et,'ISOC',3)]
+        nUTCs = 1
+
+      try: dEts = [float(dEtsArg)]
+      except: dEts = list(map(float,dEtsArg)))
+      ndEts = len(dEts)
+      if ndEts == 0:
+        dEts = [0e0]
+        ndEts = 1
+
+    except:
+      raise
+"""
 
   pbeScanSample = pbebump(/sample)
 
