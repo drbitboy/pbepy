@@ -28,19 +28,20 @@ class DIRECTEDPLANE:
     normal,point = sp.pl2nvp(self.plane)
     if sp.vdot(self.init_normal,normal) < 0.0: normal *= -1.0
     return normal,point
+  def csppl(self): return sp.nvp2pl(*sp.pl2nvp(self.plane))
 
 ########################################################################
 ### Find surface point of ellipse where surface normal is parallel and
 ###   opposite in direction to an input plane (argument plane) normal.
 ###   The A, B & C semi-axes of the ellipse are in argument abcArg.
 ###
-###   The return structure contains the ellipse surface point and the 
-###   plane height above that surface point.  The sign of the height 
-###   is the same as the sign of the dot product of the ellipse surface 
+###   The return structure contains the ellipse surface point and the
+###   plane height above that surface point.  The sign of the height
+###   is the same as the sign of the dot product of the ellipse surface
 ###   normal and a vector to the plane from the ellipse surface point.
-###   Put another way, the height is zero if the plane is tangent to 
-###   the surface, it is positive if the plane is above (in the 
-###   direction of the surface normal from) the ellipse, otherwise 
+###   Put another way, the height is zero if the plane is tangent to
+###   the surface, it is positive if the plane is above (in the
+###   direction of the surface normal from) the ellipse, otherwise
 ###   it is negative.
 ########################################################################
 class EllSurfTangent:
@@ -100,44 +101,8 @@ class EllSurfTangent:
 
     ###print(vars(self))
     return self
+
 """
-function ellsurftangent, abcArg, plane $
-         , epsilon=epsilonArg $
-         , maxIter=maxIterArg $
-         , debug=debug
-  a = abc[0]
-  b = abc[1]
-  c = abc[2]
-  outvec = -uvPlane * max(abc) * 10d3
-  eps2 = epsilon * epsilon
-  iter=0L
-  surfpt = outvec
-  err2 = (eps2 * 2d0) + 2d0
-  iwct = 3L
-  while err2 gt eps2 and iter lt maxIter and iwct ne 0L do begin
-  endwhile
-  errAng = sqrt(err2)  ### Length of cross product = sine of angle between norms
-  hgt = cspice_vdot(uvPlane,surfpt-pPlane)
-  errHgt = hgt - (cspice_vdot(uvNorm,pPlane - surfpt))
-  rtnArr = create_struct( rtnArr $
-  , 'surfpt', surfpt $     ### Ellipse surface point closest to plane
-  , 'height', hgt $        ### Height of plane above surface point
-  , 'iter', iter $         ### # of iterations used
-  , 'errAng', errAng $     ### Sine of convergence angle, Radians (approx)
-  , 'errHeight', errHgt $  ### Error of height of plane above surface point
-  )
-  if iter lt maxIter then begin
-    rtnArr.converged = 1b
-    rtnArr.status = 'Converged successfully'
-    msg = 'OK'
-  endif else begin
-    rtnArr.status = 'Failed to converge'
-    msg = 'FAILED TO CONVERGE'
-  endelse
-  if nodebug then message,msg
-  rtnArr.msg = msg
-  return,rtnArr
-end
 
 if n_elements(uvPlaneNormal) ne 3L then cspice_vhat,-[1,5d2,1],uvPlaneNormal
 if n_elements(cPlane) ne 1L then cPlane = 500d0
