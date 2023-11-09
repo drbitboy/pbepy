@@ -1,84 +1,73 @@
-def findVInf(tcaInp
-            ,VinfTargetArg $
-            ,VinfEtOffsArg $
-            ,VinfEtStepArg $
-            ,VinfEtNumArg $
-            ,etRtnOffset=etRtnOffsetArg $
-            ,kernels=kernels $
+import findtca
+import numpy as np
+import spiceypy as sp
+
+class FINDVINF:
+  def __init__(self
+              ,tcaInp
+              ,VinfTargetArg=None
+              ,VinfEtOffsArg=None
+              ,VinfEtStepArg=None
+              ,VinfEtNumArg=None
+              ,etRtnOffset=0e0
+              ,kernels=[]
             ):
+    self.success, self.status, self.msg = False, 'Vinf CALC SKIPPED', ''
+    if VinfTargetArg is None: return
 
-dodebug = keyword_set(debug)
-nodebug = dodebug ? 0b : 1b
+    etOffDefault = sp.spd() * 3.25
 
-resolve_all,/continue
+    self.VinfTarget = str(VinfTargetArg).strip()
 
-rtn = { success: 0b, status: 'Vinf CALC SKIPPED', msg:'' }
+    try   : self.VinfEtOffs = float(VinfEtOffsArg)
+    except: self.VinfEtOffs = etoffDefault
 
-if n_elements(VinfTargetArg) ne 1L then return, rtn
+    try   : self.VinfEtStep = float(VinfEtStepArg)
+    except: self.VinfEtStep = 600e0
 
-etRtnOffset = n_elements(etRtnOffsetArg) eq 1L ? double(etRtnOffsetArg[0]) : 0d0
+    try   : self.VinfEtNum = int(VinfEtNumArg)
+    except: self.VinfEtNum = 24
 
-etOffDefault = cspice_spd() * 3.25
+    self.status = 'Vinf CALC FAILED'
 
-rtn = create_struct( rtn $
-, 'VinfTarget', strtrim(VinfTargetArg[0],2) $
-, 'VinfEtOffs' $
-, n_elements(VinfEtOffsArg) eq 1 ? double(VinfEtOffsArg[0]) : etOffDefault $
-, 'VinfEtStep' $
-,  n_elements(VinfEtStepArg) eq 1 ? double(VinfEtStepArg[0]) : 600d0 $
-, 'VinfEtNum' $
-, n_elements(VinfEtNumArg) eq 1 ? long(VinfEtNumArg[0]) : 24 $
-)
+    try:
+      findtca.ftca_furnsh(kernels)
 
-rtn.status = 'Vinf CALC FAILED'
+      caOut=findtca.findtca(self.VinfTarget,tcaInp.Obs
+                           ,utcEst='JD'+str(tcaInp.JDTdbTca,2).strip()
+                           )
 
-testEr=0L
-catch,testEr
+      etTca = caOut.et
+      spd = sp.spd()
+      n1 = self.VinfEtNum
+      iw1 = np.arange(n1,dtype=np.int32)
+      n = n1*3L
+      iw23 = n+np.arange(n1*2L,dtype=np.int32)
+      t0s =  -rtn.VinfEtOffs + np.arange(n)*36d2
+      ts = etTca+t0s
+      vsTarg = np.zeros(3*n,dtype=np.float64).reshape((-1,3,))
+      vsObs = np.zeros(3*n,dtype=np.float64).reshape((-1,3,))
+      try   : targNum = sp.bodn2c(caOut.Target)
+      except: targNum = int(caOut.Target)
+      if (targNum >= 100 and targNum < 1000
+         ) or (targNum >= 248695800 and targNum < 248695900
+         ):
+        baryID = targNum // 100
+      else:
+        baryID = targNum
 
-if testEr ne 0L then begin
-  catch,/cancel
-  ftca_furnsh, kernels, /unload, debug=debug
-  rtn.msg=!error_state.msg
-  message,/reset
-  return, rtn
-endif
+      baryName = sp.bodc2s(baryID)
 
-ftca_furnsh, kernels, debug=debug
-
-caOut=findtca(rtn.VinfTarget,tcaInp.Obs $
-             ,utcEst='JD'+strtrim(tcaInp.JDTdbTca,2))
-
-etTca=caOut.et
-spd=cspice_spd()
-n1=rtn.VinfEtNum
-iw1=lindgen(n1)
-n=n1*3L
-iw23=n+lindgen(n1*2L)
-t0s= -rtn.VinfEtOffs + dindgen(n)*36d2
-ts=etTca+t0s
-vsTarg=dblarr(3,n)
-vsObs=dblarr(3,n)
-cspice_bodn2c,caOut.Target,targNum,f
-if not f then targNum = long(caOut.Target)
-baryID = (targNum ge 100 and targNum lt 1000) $
-      OR (targNum ge 248695800 and targNum lt 248695900) $
-       ? (targNum / 100L) $
-       : targNum
-cspice_bodc2s,baryID,baryName
-
-for i=0L,n-1L do begin
-  cspice_spkezr,caOut.Target,ts[i],'j2000','none',baryName,st,ltim
-  vsTarg[*,i]=st[0:2]
-  cspice_spkezr,caOut.Obs,ts[i],'j2000','none',baryName,st,ltim
-  vsObs[*,i]=st[0:2]
-endfor
-vs = vsTarg - vsObs
-ABs = dindgen(2,3)
+      for i in range(n):
+        vsTarg[i] = sp.spkezr(caOut.Target,ts[i],'j2000','none',baryName)
+        vsObs[i] = sp.spkezr(caOut.Obs,ts[i],'j2000','none',baryName)
+      vs = vsTarg - vsObs
+      ABs = dindgen(2,3)
 ABsObs = dindgen(2,3)
-for i=0L,2L do begin
-  vis=vs[i,iw1]
+for i = 0L,2L do begin
+  vis = vs[i,iw1]
   ABs[*,i] = linfit(t0s[iw1],vis[*],/double,yfit=yfits)
-  vis=vsObs[i,iw1]
+  vis = vsObs[i,iw1]
   ABsObs[*,i] = linfit(t0s[iw1],vis[*],/double,yfit=yfits)
 endfor
 
@@ -118,15 +107,15 @@ velObsTca = vel
 
 ;;; Xform from J2000 to B-plane frame, subscript bpl
 ;;;
-;;; +Zbpl in J2000 frame => TOF   => Obs asymptotic velocity wrt Targ
-;;; +Ybpl in J2000 frame => BdotT => [Target position wrt Obs] cross +Zbpl
-;;; +Xbpl in J2000 frame => BdotR => Obs position vec wrt Targ @ TCA
+;;; +Zbpl in J2000 frame  = > TOF   => Obs asymptotic velocity wrt Targ
+;;; +Ybpl in J2000 frame  = > BdotT => [Target position wrt Obs] cross +Zbpl
+;;; +Xbpl in J2000 frame  = > BdotR => Obs position vec wrt Targ @ TCA
 
-cspice_vhat,  velObsTca, uvTof                 ;;; TOF   => +Zbpl
-cspice_ucrss,  pos, uvTof, uvBdotT             ;;; BdotT => +Ybpl
-cspice_ucrss,  uvBdotT, uvTof, uvBdotR         ;;; BdotR => +Xbpl
+cspice_vhat,  velObsTca, uvTof                 ;;; TOF    = > +Zbpl
+cspice_ucrss,  pos, uvTof, uvBdotT             ;;; BdotT  = > +Ybpl
+cspice_ucrss,  uvBdotT, uvTof, uvBdotR         ;;; BdotR  = > +Xbpl
 
-;;; [+Xbpl, +Ybpl, +Zbpl] => Matrix to convert J2000 vectors to B-plane frame
+;;; [+Xbpl, +Ybpl, +Zbpl]  = > Matrix to convert J2000 vectors to B-plane frame
 
 mtx_j2b = double( [uvBdotR, uvBdotT, uvTof], 0, 3, 3)
 
@@ -142,9 +131,9 @@ raBdotR = raBdotR * dpr
 decBdotR = decBdotR * dpr
 
 ;;; Xform from barycentric target RTN frame to J2000
-;;; R => Radial from Barycenter to target
-;;; N => Normal to obit plane, R cross velocity
-;;; T => Along track, N cross R
+;;; R  = > Radial from Barycenter to target
+;;; N  = > Normal to obit plane, R cross velocity
+;;; T  = > Along track, N cross R
 
 etRtn = tcaInp.et + etRtnOffset
 cspice_etcal,etRtn,rtnTDBCaldate
@@ -175,21 +164,25 @@ rtn = create_struct( rtn $
 
 rtn.success = 1b
 rtn.status = 'Vinf CALC SUCCEEDED'
-message,'OK',continue=debug
+message,'OK',continue = debug
+
+    except:
+       ftca_furnsh(kernels, /unload)
+       self.msg = traceback.format_exc()
 
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; FVINF_TEST:  FINDTCA support function
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;n
-function fvinf_test, targ, obs, kernels=kernels $
-             , debug=debug
+function fvinf_test, targ, obs, kernels = kernels $
+             , debug = debug
 
-  ftca_furnsh, kernels, debug=debug
+  ftca_furnsh, kernels, debug = debug
 
   TcaOut = findtca(targ, obs, debug=debug)
 
-  ftca_furnsh, kernels, /unload, debug=debug
+  ftca_furnsh, kernels, /unload, debug = debug
 
   return, TcaOut
 
@@ -197,18 +190,18 @@ end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-ks=['nh_ref_v_od059b_encounter_only.bsp']
+ks = ['nh_ref_v_od059b_encounter_only.bsp']
 
-!quiet=1
-testEr=0L
+!quiet = 1
+testEr = 0L
 catch,testEr
 
 if testEr eq 0L then begin
-  pcaOut=fvinf_test('999',kernels=ks)
-  pvinfOut=findvinf(pcaOut,'999',kernels=ks,/debug,etRtnOffset=-6d2)
-  cvinfOut=findvinf(pcaOut,'901',kernels=ks,/debug)
-  nvinfOut=findvinf(pcaOut,'902',kernels=ks,/debug)
-  hvinfOut=findvinf(pcaOut,'903',kernels=ks,/debug)
+  pcaOut = fvinf_test('999',kernels=ks)
+  pvinfOut = findvinf(pcaOut,'999',kernels=ks,/debug,etRtnOffset=-6d2)
+  cvinfOut = findvinf(pcaOut,'901',kernels=ks,/debug)
+  nvinfOut = findvinf(pcaOut,'902',kernels=ks,/debug)
+  hvinfOut = findvinf(pcaOut,'903',kernels=ks,/debug)
   catch,/cancel
 endif else begin
   catch,/cancel
