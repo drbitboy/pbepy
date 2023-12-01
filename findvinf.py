@@ -1,5 +1,5 @@
+import numpy
 import findtca
-import numpy as np
 import spiceypy as sp
 
 try: clight
@@ -39,18 +39,17 @@ class FINDVINF:
     try:
       findtca.ftca_furnsh(kernels)
 
-      caOut=findtca.findtca(self.VinfTarget,tcaInp.Obs
-                           ,utcEst='JD'+str(tcaInp.JDTdbTca,2).strip()
-                           )
-
+      caOut = findtca.FINDTCA(self.VinfTarget,tcaInp.Obs
+                             ,utcEstArg=f'JD{tcaInp.JDTdbTca}'.strip()
+                             )
       etTca = caOut.et
       n1 = self.VinfEtNum
-      iw1 = np.arange(n1,dtype=np.int32)
+      iw1 = numpy.arange(n1,dtype=numpy.int32)
       n = n1*3
-      iw23 = n+np.arange(n1*2,dtype=np.int32)
-      ts = (np.arange(n)*36e2) + (etTca - rtn.VinfEtOffs)
-      vsTarg = np.zeros(3*n,dtype=np.float64).reshape((-1,3,))
-      vsObs = np.zeros(3*n,dtype=np.float64).reshape((-1,3,))
+      iw23 = n+numpy.arange(n1*2,dtype=numpy.int32)
+      ts = (numpy.arange(n)*36e2) + (etTca - self.VinfEtOffs)
+      vsTarg = numpy.zeros(3*n,dtype=numpy.float64).reshape((-1,3,))
+      vsObs = numpy.zeros(3*n,dtype=numpy.float64).reshape((-1,3,))
       try   : targNum = sp.bodn2c(caOut.Target)
       except: targNum = int(caOut.Target)
       if (targNum >= 100 and targNum < 1000
@@ -62,25 +61,25 @@ class FINDVINF:
 
       baryName = sp.bodc2s(baryID)
 
-      vsTarg = np.vstack(
-         [sp.spkezr(caOut.Target,t,'j2000','none',baryName)[0][:2]
+      vsTarg = numpy.vstack(
+         [sp.spkezr(caOut.Target,t,'j2000','none',baryName)[0][:3]
           for t in ts
          ])
-      vsObs = np.vstack(
-         [sp.spkezr(caOut.Obs,t,'j2000','none',baryName)[0][:2]
+      vsObs = numpy.vstack(
+         [sp.spkezr(caOut.Obs,t,'j2000','none',baryName)[0][:3]
           for t in ts
          ])
 
       vs = vsTarg - vsObs
 
-      a = np.vstack((np.ones(n),ts,))
+      a = numpy.vstack((numpy.ones(n),ts,)).T
 
       ### Linear fit time vs. position => Target-relative Obs velocity
       ### Linear fit time vs. position => Bary-relative Obs vel => vInf
       ### Mean Time
       ### Mean Bary-relative Obs position
-      vel = - np.linalg.lstsq(a,vs,rcond=None)[0][1]
-      vInf = np.linalg.lstsq(a,vsObs,rcond=None)[0][1]
+      vel = - numpy.linalg.lstsq(a,vs,rcond=None)[0][1]
+      vInf = numpy.linalg.lstsq(a,vsObs,rcond=None)[0][1]
       avgEt = ts.mean()
       avgPosObs = vsObs.mean(axis=0)
 
@@ -94,9 +93,9 @@ class FINDVINF:
         iter = iter + 1
         et = et + dt
         ###Target @ BTCA
-        ltim,st = sp.spkezr(caOut.Target,et,'j2000','none',baryName)
-        targWrtBary = st[0:2]
-        velTargWrtBary = st[3:5]
+        st,ltim = sp.spkezr(caOut.Target,et,'j2000','none',baryName)
+        targWrtBary = st[:3]
+        velTargWrtBary = st[3:]
         obsWrtBary = avgPosObs + vInf * (et + ltim2 - avgEt)
         pos = targWrtBary - obsWrtBary
 
@@ -126,7 +125,7 @@ class FINDVINF:
       mtx_j2b = numpy.vstack((uvBdotR, uvBdotT, uvTof,))
 
       rTof,raTof,decTof = sp.recrad(uvTof)
-      rBdotR,raBdotR,decBdotR - sp.recrad(uvBdotR)
+      rBdotR,raBdotR,decBdotR = sp.recrad(uvBdotR)
 
 
       raTof = raTof * dpr
@@ -149,7 +148,7 @@ class FINDVINF:
 
       uvRb2tt = sp.vhat(posBary2Targ)
       uvNb2tt = sp.ucrss(uvRb2tt, velBary2Targ)
-      uvTb2tt = sp.ucrss(vNb2tt, uvRb2tt)
+      uvTb2tt = sp.ucrss(uvNb2tt, uvRb2tt)
 
       self.mtx_j2b = mtx_j2b
       self.raTof = raTof
@@ -160,7 +159,7 @@ class FINDVINF:
       self.tdbBary2Targ = tcaInp.CALTIMESPICE
       self.posBary2Targ = posBary2Targ
       self.velBary2Targ = velBary2Targ
-      self.mtx_RTNtarg2j = numpy.vstack((uvRb2tt, uvTb2tt, uvNb2tt,)).T
+      self.mtx_RTNTarg2j = sp.xpose(numpy.vstack((uvRb2tt, uvTb2tt, uvNb2tt,)))
       self.tdbRTNCaldate = rtnTDBCaldate + ' TDB (SPICE ETCAL)'
       self.tdbRTN_sPastJ2k = etRtn
       self.Rtn_Offset_s = etRtnOffset
@@ -170,7 +169,9 @@ class FINDVINF:
       self.msg = 'OK'
 
     except:
-       ftca_furnsh(kernels, unload=True)
+       import traceback
+       findtca.ftca_furnsh(kernels, unload=True)
+       traceback.print_exc()
        self.msg = traceback.format_exc()
 
 """

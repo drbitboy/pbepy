@@ -1,8 +1,11 @@
 import sys
 import numpy
 import datetime
+import traceback
 import collections
 import spiceypy as sp
+
+import findvinf
 
 werr = sys.stderr.write
 try: clight
@@ -23,27 +26,26 @@ ftca_furnsh:  FINDTCA support procedure,
     try:
       func(kernel)
     except:
-      import traceback
       traceback.print_exc()
 
 
 #######################################################################n
-def ftca_getrange(targ, obs, et, ltcorr='LT'):
+def ftca_getrange(targ, obs, et, ltcorrIn='LT'):
   """
 ftca_getrange:  FINDTCA support function, get range from observer (obs)
                 to target (targ) at et (TDB) using light time correction
-                (ltcorr=).  Also return state vector (float[6]) from the
-                observer to the target, and light time
+                (ltcorrIn=).  Also returns state vector (float[6]) from
+                the observer to target, light time, light time corr used
 
 """
   ltime = -1e0 / sp.clight()
   try:
-    sp.spkezr,targ,et,'J2000',ltcorr,obs,stOut,ltime
-    return ltime*sp.clight(),stOut,ltime
+    stOut, ltime = sp.spkezr(targ,et,'J2000',ltcorrIn,obs)
+    return ltime*sp.clight(),stOut,ltime,ltcorrIn
   except:
-    import traceback
-    traceback.print_exc()
-  return -1e0,sp.vequ([0]*6,6),-1e0/clight
+    pass
+
+  return -1e0,sp.vequg([0]*6,6),-1e0/clight,ltcorrIn
 
 
 ########################################################################
@@ -59,19 +61,25 @@ FTCA_GETOPT:  FINDTCA support function, select option
 
 """
 
-  if not (arg is None): return Arg,'ARGUMENT'
+  if not (arg is None): return arg,'ARGUMENT'
 
   if not isinstance(poolvars,collections.Sequence):
     return ftcs_getopt(defawlt,arg,[poolvars])
 
-  typ=isinstance(defawlt,collections.Sequence
-                ) and type(default[0]) or type(defawlt)
+  try: typ = defawlt.dtype.name
+  except:
+    typ=((not (type(defawlt) is str))
+         and isinstance(defawlt,collections.Sequence)
+         and type(defawlt[0])
+         or type(defawlt)
+        ).__name__
 
+  print(dict(typ=typ))
   for poolvar in poolvars:
     try:
-      if typ is str    : Vals = sp.gcpool(poolvar,0,999,999)
-      elif typ is float: Vals = sp.gdpool(poolvar,0,999)
-      else             : Vals = sp.gipool(poolvar,0,999)
+      if typ.startswith('str')    : Vals = sp.gcpool(poolvar,0,999,999)
+      elif typ.startswith('float'): Vals = sp.gdpool(poolvar,0,999)
+      else                        : Vals = sp.gipool(poolvar,0,999)
 
       if len(Vals) == 1: Vals = Vals.pop()
       return Vals,'KERNELPOOL'
@@ -82,225 +90,198 @@ FTCA_GETOPT:  FINDTCA support function, select option
 
 
 ########################################################################
+def julday():
+  """Approximate Julian of right now"""
+  return ((datetime.datetime.now()-datetime.datetime(2000,1,1,12)
+          ).total_seconds()/spd)+sp.j2000()
+
+
+########################################################################
 ########################################################################
 ### FINDTCA:  Main function
 ########################################################################
 ########################################################################
-def findtca(targArg=None
-           ,obsArg=None
-           ,utcEst=utcEstArg
-           ,VinfTarg=VinfTarg
-           ,VinfEtOffset=VinfEtOffset
-           ,VinfEtStep=VinfEtStep
-           ,VinfEtNum=VinfEtNum
-           ,ltcorrIn=ltcorrArg
-           ,kernels=kernels
-           ,nounloadkernels=nounloadkernels
-           ):
+class FINDTCA:
+  def __init__(self
+              ,targArg=None
+              ,obsArg=None
+              ,utcEstArg=None
+              ,VinfTarg=None
+              ,VinfEtOffset=None
+              ,VinfEtStep=None
+              ,VinfEtNum=None
+              ,ltcorrIn='NONE'
+              ,kernels=[]
+              ,nounloadkernels=False
+              ):
 
-  ftca_furnsh(kernels)
+    ftca_furnsh(kernels)
 
-  targ = ftca_getopt('PLUTO', targArg, 'FINDTCA_TARGET')
-  obs = ftca_getopt('-98', obsArg, 'FINDTCA_OBSERVER',which=wObs)
+    self.Target = targ = ftca_getopt('PLUTO', targArg, 'FINDTCA_TARGET')[0]
+    self.Obs = obs = ftca_getopt('-98', obsArg, 'FINDTCA_OBSERVER')[0]
 
-  ### use UTC estimate if given as argument,
-  ### else use kernel pool variable FINDTCA_UTCEST
-  ### else use NOW
+    ### use UTC estimate if given as argument,
+    ### else use kernel pool variable FINDTCA_UTCEST
+    ### else use NOW
 
-  defawlt = strcompress( 'JD ' + string(julday(),f='(f30.1)') ) + ' TDB'
-  utcEst = ftca_getopt(defawlt, utcEstArg, 'FINDTCA_UTCEST',which=wUtcEst)
+    defawlt = f'JD {julday():.1f} TDB'
+    utcEst,wUtcEst = ftca_getopt(defawlt, utcEstArg, 'FINDTCA_UTCEST')
 
-  ### Convert delEst to s
+    ### Convert delEst to s
 
-  delEst = spd * (wUtcEst == 'DEFAULT' and 7e0 or 1e0)
-
-  try:
-
-    ### Find out if LEAPSECONDS have been loaded
-    ### Convert UTC estimate to ET (s past J2000)
+    delEst = spd * (wUtcEst == 'DEFAULT' and 7e0 or 1e0)
 
     try:
-      etEst = sp.str2et(utcEst)
-    except:
-      etEst,tpErrmsg = sp.tparse(utcEst)
-      werr('WARNING:  NO LEAPSECOND KERNEL AVAILABLE\n')
-      if tpErrmsg.strip() != '': werr(f'TPARSE:  {tpErrmsg}\n')
 
-    ### Go 250 steps either side of estimate, take first local minimum range
+      ### Find out if LEAPSECONDS have been loaded
+      ### Convert UTC estimate to ET (s past J2000)
 
-    iCtr=1000
-    nRanges = iCtr * 2 + 1
-    ranges = numpy.zeros(nRanges) - 1e0
+      try:
+        etEst = sp.str2et(utcEst)
+      except:
+        etEst,tpErrmsg = sp.tparse(utcEst)
+        werr('WARNING:  NO LEAPSECOND KERNEL AVAILABLE\n')
+        if tpErrmsg.strip() != '': werr(f'TPARSE:  {tpErrmsg}\n')
 
-    iMin = -1
-    i = 0
-    while i <= iCtr and iMin < 0:
-      i0 = iCtr+i
-      ranges[i0] = ftca_getrange(targ,obs,etEst+(delEst*i),ltcorrIn=ltcorrArg)
-      if min(ranges[i0-2:i0]) > -1e0:
-        if min(ranges[[i0-2,i0]]) >= ranges[i0-1]: iMin = i0-1
+      ### Go up to 1000 steps either side of the UTC estimate, find the
+      ### first three in a row when minimum range is positive and span
+      ### closest approach
+
+      iCenter = 1000
+      ranges = -numpy.ones(iCenter * 2 + 1)
+
+      iMin = -1
+      i = 0
+      while i <= iCenter and iMin < 0:
+
+        dt = delEst * i
+
+        ### Extend calculated ranges forward in time
+        i0 = iCenter+i
+        ranges[i0] = ftca_getrange(targ,obs,etEst+dt,ltcorrIn=ltcorrIn)[0]
+
+        ### If three ranges backward from i0 have positive ranges, ...
+        if min(ranges[i0-2:i0+1]) > 0e0:
+          ### ... and middle range is <= end ranges ...
+          if min(ranges[i0-2:i0+1:2]) >= ranges[i0-1]:
+            iMin = i0 - 1                       ### ... use middle range
+            continue                            ### skip backward step
+
+        ### Extend calculated ranges backward in time
+        i0 = iCenter-i
+        ranges[i0] = ftca_getrange(targ,obs,etEst-dt,ltcorrIn=ltcorrIn)[0]
+
+        ### If three ranges forward from i0 have positive ranges, ...
+        if min(ranges[i0:i0+3]) > 0e0:
+          ### ... and middle range is less than or equal to end ranges ...
+          if min(ranges[i0:i0+3:2]) >= ranges[i0+1]:
+            iMin = i0 + 1                         ### ... use middle range
+
+        ### Next increment forward or backward in time
+        i += 1
+
+      ### If NO success at any time and ltcorrIn was not specified
+      ### (so FTCA_GETRANGE defaulted to 'LT' correction), then try
+      ### repeating the calculations without the correction
 
       if iMin < 0:
-        i0 = iCtr-i
-        ranges[iCtr-i] = ftca_getrange(targ,obs,etEst-(delEst*i)
-                                      ,ltcorrIn=ltcorrArg)
-        if min(ranges[i0:i0+2]) > -1e0:
-          if min(ranges[[i0+2,i0]]) >= ranges[i0+1]: iMin = i0+1
 
-      i += 1
+        ### Fail with an error message if ltcorrIn argument is 'NONE' ...
 
-    ### If NO success at any time and ltcorrArg was not specified
-    ### (so FTCA_GETRANGE defaulted to 'LT' correction), then try
-    ### repeating the calculations without the correction
+        if ltcorrIn.upper() == 'NONE':
+          self.msg = 'Could not find TCA'
+          assert False
 
-    if iMin < 0:
+        ### else call self recursively with no light time correction
 
-      ### Fail with an error message if ltcorrArg was specified ...
+        tmp = FINDTCA(targ, obs, utcEstArg=utcEstArg, ltcorrIn='NONE')
 
-      if not (ltcorrArg is None:
-        self.msg = 'Could not find TCA'
-        return
+        ### Copy recursed instance contents to current self instance
+        self.__dict__ = tmp.__dict__
 
-      ### else call self recursively with no light time correction ('NONE')
+        ### Save recursed message, write new message
+        self.none_ltcorr_msg = self.msg
+        self.msg = 'WARNING:  FAILED WITH LIGHT TIME CORRECTION; RE-TRYING WITHOUT ...'
 
-      self.msg = 'WARNING:  FAILED WITH LIGHT TIME CORRECTION# RE-TRYING WITHOUT ...'
+        assert False
 
-      rtn = findtca( targ, obs, utcEst=utcEstArg, ltcorrIn='NONE', debug=debug)
-      if nounloadkernels: ftca_furnsh,kernels,/unload
-      return
+      ### Use Newton-Raphson to find TCA
 
-    endif
+      etEst = etEst + (iMin-iCenter) * delEst
+      ranje = ranges[iMin]
+      delEstActual = delEst
 
-    ### Use Newton-Raphson to find TCA
+      i=0
+      while i <= 10 and delEst != 0e0 and delEstActual != 0e0:
+        oldRange = ranje
+        oldEt = etEst
+        (ranje,stOut,unused1,unused2
+        ,) = ftca_getrange(targ,obs,oldEt,ltcorrIn=ltcorrIn)
+        p=stOut[:3]
+        v=stOut[3:]
+        delEst = - sp.vdot(p,v) / sp.vdot(v,v)
+        etEst = oldEt + delEst
+        delEstActual = etEst - oldEt
+        i=i+1
 
-    etEst = etEst + (iMin-iCtr) * delEst
-    range = ranges[iMin]
-    md = 0e0
-    delEstActual = delEst
+      if delEstActual != 0e0: oldRange = ranje
 
-    i=0
-    while i <= 10 and delEst ne 0e0 and delEstActual ne 0e0 do begin
-      oldRange = range
-      oldEt = etEst
-      range = ftca_getrange(targ,obs,oldEt,stOut=stOut,ltcorrIn=ltcorrArg)
-      p=stOUt[0:2]
-      v=stOut[3:5]
-      delEst = - sp.vdot(p,v) / total(v*v)
-      etEst = oldEt + delEst
-      delEstActual = etEst - oldEt
-      if dodebug then begin
-        oldMd = md
-        sp.vperp, p, v, mdVec
-        md = sp.vnorm(mdVec)
-        if i == 0 then begin
-          print, 'Iter', 'deltaEtCalc', 'deltaEtActual'
-               , 'deltaMissDist', 'MissDist'
-               , f='(a4,4a16)'
-        endif else begin
-          print,i,delEst,etEst-oldEt,md-oldMd, md
-               , f='(i4,4g16.8)'
-        endelse
-      endif
-      i=i+1
-    endwhile
+      self.et = abs(etEst)
+      self.tca_err = abs(delEst)
+      self.ca_dist_err:  abs(ranje-oldRange)
 
-    if delEstActual ne 0e0 then oldRange = range
-    range = ftca_getrange(targ,obs,etEst,stOut=stOut,ltcorrIn=ltcorrArg
-                         ,ltcorrOut=ltcorrOut
-                         ,ltimeOut=ltimeOut)
+      (ranje,stOut,ltimeOut,self.lt_corr
+      ,) = ftca_getrange(targ,obs,etEst,ltcorrIn=ltcorrIn)
 
-    targPosJ2k = stOut[0:2]
-    targVelJ2k = stOut[3:5]
-    obsPosJ2k = -targPosJ2k
-    obsVelJ2k = -targVelJ2k
+      targPosJ2k = stOut[:3]
+      targVelJ2k = stOut[3:]
+      self.obs_pos_j2k = sp.vscl(-1e0,targPosJ2k)
+      self.obs_vel_j2k = sp.vscl(-1e0,targVelJ2k)
+      self.miss_distance = sp.vnorm(stOut[:3])
+      self.speed = sp.vnorm(stOut[3:5])
 
-    ### Define reference frame as:
-    ###   XY plane contains obs to targ and obs velocity
-    ###   +X = vector to target from observer at CA
-    ###   +Y near observer velocity
+      ### Define trajectory plane reference frame as:
+      ###   XY plane contains obs to targ and obs velocity
+      ###   +X = vector to target from observer at CA
+      ###   +Y near observer velocity
 
-    sp.ucrss, targPosJ2k, obsVelJ2k, trajPlaneZ     ### +X cross ~+Y = +Z
-    sp.ucrss, trajPlaneZ, targPosJ2k, trajPlaneY    ### +Z cross +X  = +Y
-    sp.ucrss, trajPlaneY, trajPlaneZ, trajPlaneX    ### +Y cross +Z  = +X
+      mtx_trajPln = sp.twovec(targPosJ2k,1,self.obs_vel_j2k,2)
 
-    sunRange = ftca_getrange('SUN',targ,etEst-ltimeOut,stOut=stSun
-                         ,ltcorrIn=ltcorrArg
-                         ,ltimeOut=ltimeOut)
+      (sunRange,stSun,unused1,unused2
+      ,) = ftca_getrange('SUN',targ,etEst-ltimeOut,ltcorrIn=ltcorrIn)
 
-    if sunRange > -1e0 then begin
-      sunPosJ2k = stSun[0:2]
-      sunStatus = 'OK'
-    endif else begin
-      sunPosJ2k = obsVelJ2k
-      sunStatus = 'SPICE CALL FAILED# USING UPTRACK'
-    endelse
+      vld = sunRange > -1e0   ### Sun lookup was valid
 
-    sunAzElRFb = cv_coord( /degree, /to_sph
-                         , from_rec=[ sp.vdot(trajPlaneX,sunPosJ2k)
-                                    , sp.vdot(trajPlaneY,sunPosJ2k)
-                                    , sp.vdot(trajPlaneZ,sunPosJ2k)
-                                    ]
-                         )
+      self.sun_pos_j2k = stSun[:3] if vld else self.obs_vel_j2k
+      self.sun_status = vld and 'OK' or 'SPICE CALL FAILED; USING UPTRACK'
 
-    jdTdbTca=sp.j2000()+etEst/sp.spd()
-    caldat,jdTdbTca,month,day,year,hour,minute,seconds
-    month=strmid('JANFEBMARAPRMAYJUNJULAUGSEPOCTNOVDEC',month*3-3,3)
-    TdbTimeIdl = string(year,' ',month,' ',day,f='(i4.4,a,a,a,i2.2)' )
-                 + ' '
-                 + string( hour, ':',minute,':',seconds, f='(2(i2.2,a),f06.3)')
-                 + ' TDB (IDL CALDAT)'
+      self.sun_azel_fb = sp.recrad(sp.mxv(mtx_trajPln,self.sun_pos_j2k))[1:]
 
-    sp.etcal,etEst,CalTimeSpice
+      self.JDTdbTca = sp.j2000() + (etEst / spd)
+      etcal = sp.etcal(etEst)
+      self.TDBTIMEIDL = f'{etcal} TDB (NOT IDL CALDAT)'
+      self.CALTIMESPICE = f'{etcal} TDB (SPICE ETCAL)'
 
-    utcEr=0
-    catch,utcEr
-    if utcEr == 0 then begin
-      sp.et2utc,etEst,'C',3,UtcTimeBare
-      sp.timout,etEst,'YYYY MON DD HR:MN:SC.### TDB (SPICE TIMOUT)::TDB',999
-                  ,TdbTimeSpice
-      catch,/cancel
-      UtcTime=UtcTimeBare + ' UTC (SPICE ET2UTC)'
-    endif else begin
-      catch,/cancel
-      UtcTime = 'LEAPSECOND-Kernel missing?'
-      TdbTimeSpice = UtcTime
-    endelse
+      try:
+        self.UTCTIME = sp.et2utc(etEst,'C',3,999) +' UTC (SPICE ET2UTC)'
+        timout_fmt = 'YYYY MON DD HR:MN:SC.### TDB (SPICE TIMOUT)::TDB'
+        self.TDBTIMESPICE = sp.timout(etEst,timout_fmt,999)
+      except:
+        self.TDBTIMESPICE = self.UTCTIME = 'LEAPSECOND-Kernel missing?'
 
-    xxx =
-    {            ET:  etEst
-    , MISS_DISTANCE:  sp.vnorm(stOut[0:2])
-    ,         SPEED:  sp.vnorm(stOut[3:5])
-    ,        TARGET:  targ
-    ,           OBS:  obs
-    ,   OBS_POS_J2k:  obsPosJ2k
-    ,   OBS_VEL_J2k:  obsVelJ2k
-    ,   SUN_POS_J2k:  sunPosJ2k
-    ,   SUN_AZEL_FB:  sunAzElRFb[0:1]
-    ,    SUN_STATUS:  sunStatus
-    ,       LT_CORR:  ltcorrOut
-    ,       TCA_ERR:  abs(delEst)
-    ,   CA_DIST_ERR:  abs(range-oldRange)
-    ,      JDTDBTCA:  jdTdbTca
-    ,    TDBTIMEIDL:  TdbTimeIdl
-    ,  CALTIMESPICE:  CalTimeSpice + ' TDB (SPICE ETCAL)'
-    ,  TDBTIMESPICE:  TdbTimeSpice
-    ,       UTCTIME:  UtcTime
-    }
+      self.tofCalc = findvinf.FINDVINF(self
+                                      ,VinfTarg
+                                      ,VinfEtOffset,VinfEtStep,VinfEtNum
+                                      )
 
-    tcaOut = create_struct( xxx
-    , 'tofCalc', findvinf( xxx
-                         , VinfTarg
-                         , VinfEtOffset
-                         , VinfEtStep
-                         , VinfEtNum
-                         , debug=debug
-                         )
-    )
+    except:
+      traceback.print_exc()
+      self.msg = traceback.format_exc()
 
-    if not keyword_set(nounloadkernels) then ftca_furnsh,kernels,/unload
-
-    return###, tcaOut
-
+    ### Clean up kernels if requested
+    try:
+      if not nounloadkernels: ftca_furnsh(kernels,unload=True)
+    except: pass
 
 
 """

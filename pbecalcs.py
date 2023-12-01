@@ -1,5 +1,13 @@
+import math
+import numpy
 import collections
 import spiceypy as sp
+from pbebump import PBEBUMP
+from kinetxcurrent import kinetxcurrent
+from findsatephuncabc import FINDSATEPHUNCABC
+
+spd,dpr = sp.spd(),sp.dpr()
+
 ########################################################################
 ### Plumped, Bumped Ellipsoid calculations
 ###
@@ -28,7 +36,7 @@ class PBESTRUCT:
 , pStE=None      ### DOUBLE, Pluto err, NIX & HYDRA only, km, dflt=findsatephuncabc
 , mdlF=None      ### STRING, => MDL file name to which to write PBE for STK
 , datF=None      ### STRING, => Flat ASCII filename to which to write info
-, DelivSigmas=0  ### Misc keywords
+, DelivSigmas=False ### Misc keywords
 ):
     unloadKernelsOnExit = ukoe and True or False
     self.success = False
@@ -36,36 +44,36 @@ class PBESTRUCT:
     self.msg = ''
 
     try:
-      pbeStr.status = 'PBEcalcs FAILED to load kernels'
+      self.status = 'PBEcalcs FAILED to load kernels'
       for k in kern: sp.furnsh(k)
-      pbeStr.status = 'PBEcalcs FAILED'
+      self.status = 'PBEcalcs FAILED'
 
       self.TargName = str(targArg)
       self.ObsName = str(obsArg)
 
-      self.TargID = sp.bods2c(targNameArg)
-      self.ObsID = sp.bods2c(obsNameArg)
+      self.TargID = sp.bods2c(self.TargName)
+      self.ObsID = sp.bods2c(self.ObsName)
 
-      try   : self.TargName = sp.bodc2n(self.targID,99)
+      try   : self.TargName = sp.bodc2n(self.TargID,99)
       except: pass
 
-      try   : self.ObsName = sp.bodc2n(self.obsID,99)
+      try   : self.ObsName = sp.bodc2n(self.ObsID,99)
       except: pass
 
       if radi is None:
-        try   : t = numpy.max(sp.bodvcd(self.targID,'RADII',4))
+        try   : t = numpy.max(sp.bodvcd(self.TargID,'RADII',4))
         except: t = 0e0
       else    : t = radi
       self.TargRadius = float(t)
  
-      self.kinetx = kx = kinetxcurrent(target=targArg)
+      self.kinetx = kinetx = kinetxcurrent(target=targArg)
 
       ### KGET defaults to Knowledge Sigmas
 
-      if sigm is None: self.baseSigmas = kx.kget(DeSig=DelivSigmas)
+      if sigm is None: self.baseSigmas = kinetx.kget(DeSig=DelivSigmas)
       else           : self.baseSigmas = list(map(float,sigm))
 
-      if mJ2u is None: self.mtx_j2k2Uncert  = kx.mJ2u
+      if mJ2u is None: self.mtx_j2k2Uncert  = kinetx.mJ2u
       else           : self.mtx_j2k2Uncert = mJ2u
 
       self.sigmaMultiple = float(nSig)
@@ -75,251 +83,198 @@ class PBESTRUCT:
       try:
         L = len(satE)
         if L == 3: self.satEphemUncert = sp.vequ(*satE)
-        else     : self.satEphemUncert = sp.vequ(00, satE[0], 0e0)
-      except     : self.satEphemUncert = sp.vequ(00, satE, 0e0)
+        else     : self.satEphemUncert = sp.vpack(0e0, satE[0], 0e0)
+      except     : self.satEphemUncert = sp.vpack(0e0, satE, 0e0)
 
       self.pluEphemUncert = numpy.zeros(3,dtype=numpy.float64)
       self.pluEphemUncertSource = ''
 
-      if isinstance(UTCsArg,str): UTCs = [UTCsArg]
+      if isinstance(UTCsArg,str): self.UTCs = [UTCsArg]
       else:
         assert isinstance(UTCsArg,collections.Sequence)
-        UTCs = UTCsArg
-      nUTCs = len(UTCs)
-
-      if isinstance(dEtsArg,str): UTCs = [UTCsArg]
-      else:
-        assert isinstance(UTCsArg,collections.Sequence)
-        UTCs = UTCsArg
-      nUTCs = len(UTCs)
+        self.UTCs = list(map(str,UTCsArg))
+      nUTCs = len(self.UTCs)
       if nUTCs == 0:
-        UTCs = [sp.et2utc(kinetx.tca.et,'ISOC',3)]
+        self.UTCs = [sp.et2utc(kinetx.Tca.et,'ISOC',3)]
         nUTCs = 1
 
-      try: dEts = [float(dEtsArg)]
-      except: dEts = list(map(float,dEtsArg)))
-      ndEts = len(dEts)
+      try: self.dEts = [float(dEtsArg)]
+      except: self.dEts = list(map(float,dEtsArg))
+      ndEts = len(self.dEts)
       if ndEts == 0:
-        dEts = [0e0]
+        self.dEts = [0e0]
         ndEts = 1
 
     except:
+      import traceback
+      self.message = traceback.format_exc()
       raise
-"""
 
-  pbeScanSample = pbebump(/sample)
+    ### Create 2-D array PBEs (below) at various base UTCs and deltaETs
+    lpbe = lambda iutc,idet: PBE(iutc,idet,self,pStE=pStE)
 
-  pbeBase =
-  { UTC: ''
-  , ETminusTCA: 0d0
-  , nomVec_J2k: dblarr(3)
-  , nomRRaDec_J2k: dblarr(3)
-  , nomVinfPerp_J2k:  dblarr(3)
-  , projVinfVtargRot_Deg: 0d0
-  , plumpedABC: dblarr(3)
-  , $  ### Scans up & down along Vinfinity...
-    scanVinfUptrack: pbeScanSample
-  , scanVinfDowntrack: pbeScanSample
-  , $  ### Scans over & below across Vinfinity...
-    scanVinfOvertrack: pbeScanSample
-  , scanVinfBelowtrack: pbeScanSample
-  , $  ### Scans up & down along Vtarget...
-    scanVtargUptrack: pbeScanSample
-  , scanVtargDowntrack: pbeScanSample
-  , $  ### Scans over & below across Vtarget ...
-    scanVtargOvertrack: pbeScanSample
-  , scanVtargBelowtrack: pbeScanSample
-  , VinfVtarg200sDiff_deg: 0d0 $      ### Offset @ 200s btw Vinf & Vtarg in FOV
-  }
+    arr =         [[lpbe(iUTC,idEt) for idEt in range(ndEts)]
+                   for iUTC in range(nUTCs)
+                  ]
 
-  pbeArr = replicate(pbeBase, nUTCs, ndEts)
+    self.pbeArr = numpy.array(arr)
+    """
+    self.pbeArr = numpy.array(
+                  [[lpbe(iUTC,idEt) for idEt in range(ndEts)]
+                   for iUTC in range(nUTCs)
+                  ])
+    """
 
-  dpr = cspice_dpr()
-  abc0Sq = pbeStr.baseSigmas*pbeStr.baseSigmas  ### Apply sigma multiplier later
+    self.success = True
+    self.status = 'PBEcalcs OK'
+    self.msg = 'OK'
 
-  j2u = pbeStr.mtx_j2k2Uncert
-
-  for iUTC=0L,nUTCs-1L do begin
-    cspice_utc2et, UTCs[iUTC], et0
-    for idEt=0L,ndEts-1L do begin
-      pbe = pbeBase
-
-      ### Time
-      et = et0 + dEts[idEt]
-      cspice_et2utc,et, 'ISOC',3L,utc
-      pbe.UTC = utc
-      pbe.ETminusTCA = et - kinetx.tca.et
-
-      ### Ephemeris
-
-      cspice_spkezr, targName, et, 'J2000', 'LT', obsName, stJ2k, ltim
-      pbe.nomVec_J2k = stJ2k[0:2]
-      cspice_recrad, stJ2k[0:2], r,ra,dec
-      pbe.nomRRaDec_J2k = [ r, [ra,dec] * dpr]
-
-      ### Perpendiculars to projection into FOV of Vinfinty & of Vtarget lines
-      ### * stJ2k[0:2] is vector to nominal target position
-      ### * .mtx_j2k2Uncert[*,0] is Vinfinity, pointing downtrack
-      ### * stJ2k[3:5] is target velocity, Vtarg, pointing uptrack-ish
-      ### * Orientation of FOV (in plane normal to nominal target position vec):
-      ###   * Vinf or Vtarg is horizontal, Downtrack is Left
-      ###   * VInfPerp and VTargPerp are Up
-
-      vInf = pbeStr.mtx_j2k2Uncert[*,0]
-      cspice_ucrss, stJ2k[0:2], vInf, vInfPerp
-      pbe.nomVinfPerp_J2k = vInfPerp
-      cspice_ucrss, stJ2k[3:5], stJ2k[0:2], vTargPerp
-      pbe.projVinfVtargRot_Deg = cspice_vsep(vInfPerp,vTargPerp) * dpr
-
-      ### Convert vectors to Uncertainty frame
-
-      cspice_mxv, j2u, stJ2k[0:2], pTargU   ### Target position
-      cspice_mxv, j2u, stJ2k[3:5], vTargU   ### Target velocity, uptrack
-      cspice_mxv, j2u, vInf, vInfU          ### Vinfinity, downtrack
-      cspice_mxv, j2u, vInfPerp, vInfPerpU
-      cspice_mxv, j2u, vTargPerp, vTargPerpU
-
-      ### Calculate offset btw Vinf & Vtarg at 200s in FOV in degrees
-
-      tipTargDt = pTargU - (vTargU * 200d0)    ### 200s downtrack along vTarg
-      tipTargUt = pTargU + (vTargU * 200d0)    ### 200s uptrack along vTarg
-      l = cspice_vnorm(vTargU) * 200d0
-      tipInfDt = pTargU + (vInfU * l)          ### 200s downtrack along vInfU
-      tipInfUt = pTargU - (vInfU * l)          ### 200s uptrack along vInfU
-
-      tipDiffDt = tipInfDt - tipTargDt
-      tipUiffUt = tipInfUt - tipTargUt
-
-      cspice_vperp, tipDiffDt, tipTargDt, tipVPerpDt
-      cspice_vperp, tipUiffUt, tipTargUt, tipVPerpUt
-      pbe.VinfVtarg200sDiff_deg = dpr
-      * atan( max( [ cspice_vnorm(tipVPerpDt) / cspice_vnorm(tipTargDt)
-                   , cspice_vnorm(tipVPerpUt) / cspice_vnorm(tipTargUt)
-                   ] ) )
-
-      ##################################################################
-      ### OLD CODE:
-      ##################################################################
-
-      ##################################################################
-      ### Plump ellipse:
-      ### * Satellite ephem uncertainty times satellite velocity unit vector
-      ### * RSS satellite ephemeris uncertainties
-      ###     with ellipse uncertainties in Uncertainty frame
-
-      ###cspice_vhat, vTargU, uvVTargU
-      ###abcAdd = uvVTargU * pbeStr.satEphemUncert
-      ##################################################################
-      ### END OLD CODE
-      ##################################################################
-
-      ##################################################################
-      ### Plump ellipse:
-      ### * Use function findsatephuncabc
-
-      seu = pbeStr.satEphemUncert
-      ttrg = kinetx.tca.target
+    for k in kern: sp.unload(k)
 
 
-      ### - Square of Target uncertainties wrt Pluto barycenter
+########################################################################
+class PBE:
+  def __init__(self,iUTC,idEt,pbeStr,pStE=None):
 
-      abcTargStr = findsatephuncabc( targName
-                   , sigmaRTN=pbeStr.satEphemUncert, observer=obsName
-                   , tcaTarget=kinetx.tca.target, etRtnOffset=pbe.ETminusTCA
-                   , debug=debug)
-      abcTarg = abcTargStr.sigmaABC
+    abc0Sq = pbeStr.baseSigmas*pbeStr.baseSigmas  ### Apply sigma multiplier later
 
-      ### - adjustment to convert to uncertainty wrt Pluto
+    j2u = pbeStr.mtx_j2k2Uncert
 
-      ### - For multiple-body MU69 KEM cases, whenre targID is 2486958nn,
-      ###   use 2486958 as targIDclass to find correct clause here
-      ### - Otherwise use targID as targIDclass
+    et0 = sp.utc2et(pbeStr.UTCs[iUTC])
 
-      targIDclass = (targID ge 248695800 and targID lt 248695900) ? 2486958 : targID
+    ### Time
+    self.et = et = et0 + pbeStr.dEts[idEt]
+    self.utc = utc = sp.et2utc(et, 'ISOC',3)
+    self.ETminusTCA = et - pbeStr.kinetx.Tca.et
 
-      case targIDclass of
-      2486958: begin
-             abcPlu = [0d0,0,0]  ### MU69 single or multiple body:  no other required
-             if iUtc eq 0 and idEt eq 0 then begin
-               pbeStr.pluEphemUncert = [0d0,0,0]
-               pbeStr.pluEphemUncertSource = 'N/A'
-               if targID ne targIDclass and cspice_vnorm(abcTarg) eq 0d0 then begin
-                 message,/continue,'WARNING:  MU69 satellite barycenter-relative uncertainty is zero; consider using keyword argument satEArg'
-               endif
-             endif
-           end
-      999: begin
-             abcPlu = [0d0,0,0]                   ### Pluto:  no other required
-             if iUtc eq 0 and idEt eq 0 then begin
-               pbeStr.pluEphemUncert = [0d0,0,0]
-               pbeStr.pluEphemUncertSource = 'N/A'
-             endif
-           end
-      901: begin
-             abcPlu = abcTarg / 10d0              ### Charon:  add 10%
-             if iUtc eq 0 and idEt eq 0 then begin
-               pbeStr.pluEphemUncert = abcTargStr.sigmaRTN / 10d0
-               pbeStr.pluEphemUncertSource = '10% of Target (Charon)'
-             endif
-             ### Previous code is wrong and gets overridden unless
-             ###   environment variable WRONGTENPERCENT is non-empty string
-             ### Charon:  add 10% after RSS, 21% after squaring:
-             ###   1.1^2 = 1.21 = 1^2 + sqrt(.21)^2
-             if getenv("WRONGTENPERCENT") eq '' then begin
-               abcPlu = abcTarg * sqrt(.21d0)
-               if iUtc eq 0 and idEt eq 0 then begin
-                 pbeStr.pluEphemUncert = abcTargStr.sigmaRTN / 10d0
-                 pbeStr.pluEphemUncertSource = 'sqrt(.21) of Target (Charon)'
-               endif
-             endif
-           end
-      else: begin                               ### Nix & Hydra:  add Pluto
-              abcPlutoStr = findsatephuncabc( '999'
-                , observer=obsName
-                , sigmaRTN=pStEArg
-                , tcaTarget=kinetx.tca.target, etRtnOffset=pbe.ETminusTCA
-                , debug=debug)
-              abcPlu = abcPlutoStr.sigmaABC
-              if iUtc eq 0 and idEt eq 0 then begin
-                pbeStr.pluEphemUncert = abcPlutoStr.sigmaRTN
-                pbeStr.pluEphemUncertSource = abcPlutoStr.sigmaRTNSource
-              endif
-            end
-      endcase
+    ### Ephemeris
 
-      ### RSS Plumped:  sqRt of Sum Squared; scaled by sigma multiple
+    stJ2k,ltim = sp.spkezr(pbeStr.TargName, et, 'J2000', 'LT', pbeStr.ObsName)
+    self.nomVec_J2k = stJ2k[:3]
+    r,ra,dec = sp.recrad(stJ2k[:3])
+    self.nomRRaDec_J2k = [r, ra*dpr, dec*dpr]
 
-      abcP = sqrt(abc0Sq + abcTarg^2 + abcPlu^2) * sigmaMultiple
+    ### Perpendiculars to projection into FOV of Vinfinty & of Vtarget lines
+    ### * stJ2k[:3] is vector to nominal target position
+    ### * .mtx_j2k2Uncert[*,0] is Vinfinity, pointing downtrack
+    ### * stJ2k[3:] is target velocity, Vtarg, pointing uptrack-ish
+    ### * Orientation of FOV (in plane normal to nominal target position vec):
+    ###   * Vinf or Vtarg is horizontal, Downtrack is Left
+    ###   * VInfPerp and VTargPerp are Up
 
+    vInf = sp.vpack(*list(pbeStr.mtx_j2k2Uncert.T[0]))
+    self.nomVinfPerp_J2k = vInfPerp = sp.ucrss(stJ2k[:3], vInf)
+    vTargPerp = sp.ucrss(stJ2k[3:], stJ2k[:3])
+    self.projVinfVtargRot_Deg = sp.vsep(vInfPerp,vTargPerp) * dpr
 
-      pbe.plumpedABC = abcP
+    ### Convert vectors to Uncertainty frame
 
-      pbe.scanVinfUptrack = pbebump( -vInfU, -pTargU, abcP, targRadius)
-      pbe.scanVinfDowntrack = pbebump( vInfU, -pTargU, abcP, targRadius)
-      pbe.scanVinfOvertrack = pbebump( vInfPerpU, -pTargU, abcP, targRadius)
-      pbe.scanVinfBelowtrack = pbebump( -vInfPerpU, -pTargU, abcP, targRadius)
+    pTargU     = sp.mxv(j2u, stJ2k[:3])     ### Target position
+    vTargU     = sp.mxv(j2u, stJ2k[3:])     ### Target velocity, uptrack
+    vInfU      = sp.mxv(j2u, vInf)          ### Vinfinity, downtrack
+    vInfPerpU  = sp.mxv(j2u, vInfPerp)
+    vTargPerpU = sp.mxv(j2u, vTargPerp)
 
-      pbe.scanVtargUptrack = pbebump( vTargU, -pTargU, abcP, targRadius)
-      pbe.scanVtargDowntrack = pbebump( -vTargU, -pTargU, abcP,targRadius)
-      pbe.scanVtargOvertrack = pbebump( vTargPerpU, -pTargU, abcP, targRadius)
-      pbe.scanVtargBelowtrack = pbebump( -vTargPerpU, -pTargU, abcP, targRadius)
+    ### Calculate offset btw Vinf & Vtarg at 200s in FOV in degrees
 
-      ### Put results into array
+    tipTargDt = pTargU - (vTargU * 200e0)    ### 200s downtrack along vTarg
+    tipTargUt = pTargU + (vTargU * 200e0)    ### 200s uptrack along vTarg
+    l = sp.vnorm(vTargU) * 200e0
+    tipInfDt = pTargU + (vInfU * l)          ### 200s downtrack along vInfU
+    tipInfUt = pTargU - (vInfU * l)          ### 200s uptrack along vInfU
 
-      pbeArr[iUTC,idEt] = pbe
-    endfor ### idEt
-  endfor ### iUTC
+    tipDiffDt = tipInfDt - tipTargDt
+    tipUiffUt = tipInfUt - tipTargUt
 
-  pbeStr = create_struct( pbeStr, 'pbeArr', pbeArr)
+    tipVPerpDt = sp.vperp(tipDiffDt, tipTargDt)
+    tipVPerpUt = sp.vperp(tipUiffUt, tipTargUt)
+    self.VinfVtarg200sDiff_deg = (dpr
+      * math.atan( max( [ sp.vnorm(tipVPerpDt) / sp.vnorm(tipTargDt)
+                        , sp.vnorm(tipVPerpUt) / sp.vnorm(tipTargUt)
+                        ] ) ) )
 
-  pbeStr.success = 1b
-  pbeStr.status = 'PBEcalcs OK'
-  message,'OK'
-end
+    ##################################################################
+    ### Plump ellipse:
+    ### * Use function FINDSATEPHUNCABC
+
+    kxttrg = pbeStr.kinetx.Tca.Target
+
+    ### - Square of Target uncertainties wrt Pluto barycenter
+
+    abcTargStr = FINDSATEPHUNCABC(pbeStr.TargName
+                                 ,sigmaRTN=pbeStr.satEphemUncert
+                                 ,observer=pbeStr.ObsName
+                                 ,tcaTarget=kxttrg
+                                 ,etRtnOffset=self.ETminusTCA
+                                 )
+    abcTarg = abcTargStr.sigmaABC
+
+    ### - adjustment to convert to uncertainty wrt Pluto
+
+    ### - For multiple-body MU69 KEM cases, when TargID is 2486958nn,
+    ###   use 2486958 as targIDclass to find correct clause here
+    ### - Otherwise use targID as targIDclass
+
+    targID = pbeStr.TargID
+
+    if targID >= 248695800 and targID < 248695900: targIDclass = 2486958
+    else                                         : targIDclass = targID
+
+    if targIDclass == 2486958:
+      abcPlu = sp.vpack(0,0,0)  ### MU69 single or multiple body:  no other required
+      if iUTC == 0 and idEt == 0:
+        pbeStr.pluEphemUncert = [0e0,0,0]
+        pbeStr.pluEphemUncertSource = 'N/A'
+        if targID != targIDclass and sp.vnorm(abcTarg) == 0e0:
+          print('WARNING:  MU69 satellite barycenter-relative uncertainty is zero; consider using keyword argument satEArg')
+
+    elif targIDclass == 999:
+      abcPlu = sp.vpack(0,0,0)             ### Pluto:  no other required
+      if iUTC == 0 and idEt == 0:
+        pbeStr.pluEphemUncert = [0e0,0,0]
+        pbeStr.pluEphemUncertSource = 'N/A'
+
+    elif targIDclass == 901:
+      ### Charon:  add 10% after RSS, 21% after squaring:
+      ###   1.1^2 = 1.21 = 1^2 + sqrt(.21)^2
+      abcPlu = abcTarg * numpy.sqrt(.21e0)
+      if iUTC == 0 and idEt == 0:
+        pbeStr.pluEphemUncert = abcTargStr.sigmaRTN / 10e0
+        pbeStr.pluEphemUncertSource = 'sqrt(.21) of Target (Charon)'
+
+    else:                                 ### Nix & Hydra:  add Pluto
+      abcPlutoStr = FINDSATEPHUNCABC( '999'
+                                    , observer=pbeStr.ObsName
+                                    , sigmaRTN=pStE
+                                    , tcaTarget=kxttrg
+                                    , etRtnOffset=self.ETminusTCA
+                                    )
+      abcPlu = abcPlutoStr.sigmaABC
+      if iUTC == 0 and idEt == 0:
+        pbeStr.pluEphemUncert = abcPlutoStr.sigmaRTN
+        pbeStr.pluEphemUncertSource = abcPlutoStr.sigmaRTNSource
+
+    ### RSS Plumped:  sqRt of Sum Squared; scaled by sigma multiple
+
+    abcP = numpy.sqrt(abc0Sq + abcTarg*abcTarg + abcPlu*abcPlu
+                     ) * pbeStr.sigmaMultiple
+
+    self.plumpedABC = abcP
+
+    self.scanVinfUptrack = PBEBUMP( -vInfU, -pTargU, abcP, pbeStr.TargRadius)
+    self.scanVinfDowntrack = PBEBUMP( vInfU, -pTargU, abcP, pbeStr.TargRadius)
+    self.scanVinfOvertrack = PBEBUMP( vInfPerpU, -pTargU, abcP, pbeStr.TargRadius)
+    self.scanVinfBelowtrack = PBEBUMP( -vInfPerpU, -pTargU, abcP, pbeStr.TargRadius)
+
+    self.scanVtargUptrack = PBEBUMP( vTargU, -pTargU, abcP, pbeStr.TargRadius)
+    self.scanVtargDowntrack = PBEBUMP( -vTargU, -pTargU, abcP,pbeStr.TargRadius)
+    self.scanVtargOvertrack = PBEBUMP( vTargPerpU, -pTargU, abcP, pbeStr.TargRadius)
+    self.scanVtargBelowtrack = PBEBUMP( -vTargPerpU, -pTargU, abcP, pbeStr.TargRadius)
 
 #######################################################################
 ### Test code
 
+"""
 !quiet=1
 
 ####################################
@@ -331,10 +286,10 @@ end
 ###     at which the calculations are
 ###     performed
 
-dEts=(lindgen(3)-1L)*cspice_spd()
-dEts=(lindgen(41)-20L)*36d2
-halfDEts = exp( dindgen(20) * alog(cspice_spd()) / 19d0)
-dEts = [ -reverse(halfDEts), 0d0, halfDEts ]
+dEts=(numpy.arange(3)-1)*spd
+dEts=(numpy.arange(41)-20)*36e2
+halfDEts = exp( dindgen(20) * alog(cspice_spd()) / 19e0)
+dEts = [ -reverse(halfDEts), 0e0, halfDEts ]
 
 pk='v_od059b.tm'       ### Pluto SPICE meta-kernel
 
@@ -347,13 +302,13 @@ mk= 'mu69altikore.tm'  ### MU69 SPICE meta kernel
 ###     = e.g. , UTC='2008-07-14T10:20:30'
 ####################################
 
-cRTN=[ 62d0,   22,   6]    ### Charon RTN ephemeris uncertainties wrt barycenter
-nRTN=[109d0, 1629, 209]    ### Nix
-hRTN=[ 64d0, 1512, 102]    ### Hydra
+cRTN=[ 62e0,   22,   6]    ### Charon RTN ephemeris uncertainties wrt barycenter
+nRTN=[109e0, 1629, 209]    ### Nix
+hRTN=[ 64e0, 1512, 102]    ### Hydra
 
-pRTN=cRTN / 10d0           ### Pluto <= 10% of Charon
+pRTN=cRTN / 10e0           ### Pluto <= 10% of Charon
 
-mRTN=[ 64d0, 1512, 102]    ### Mu69
+mRTN=[ 64e0, 1512, 102]    ### Mu69
 
 sMU69 = '2486958'
 
@@ -440,7 +395,7 @@ function pbecArg, arg, dflt, outVal=outVal, noErase=noErase, usedArg=usedArg
   ptr_free, ptr_new(xxx,/no_copy)
   ntyp = size(xxx,/typ)              ### null type
   dtyp=size(dflt,/typ)
-  if vtyp ne dtyp and dtyp ne ntyp then outVal = fix(outVal,type=dtyp)
+  if vtyp != dtyp and dtyp != ntyp then outVal = fix(outVal,type=dtyp)
   return, n_elements(outVal)
 end
 """
