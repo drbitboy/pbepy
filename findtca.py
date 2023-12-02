@@ -74,7 +74,6 @@ FTCA_GETOPT:  FINDTCA support function, select option
          or type(defawlt)
         ).__name__
 
-  print(dict(typ=typ))
   for poolvar in poolvars:
     try:
       if typ.startswith('str')    : Vals = sp.gcpool(poolvar,0,999,999)
