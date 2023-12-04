@@ -45,8 +45,7 @@ ftca_getrange:  FINDTCA support function, get range from observer (obs)
   except:
     pass
 
-  try: return -1e0,sp.vequg([0]*6,6),-1e0/clight,ltcorrIn
-  except: return -1e0,sp.vequg([0]*6),-1e0/clight,ltcorrIn
+  return -1e0,numpy.array([0e0]*6),-1e0/clight,ltcorrIn
 
 
 ########################################################################
