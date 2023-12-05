@@ -109,7 +109,7 @@ class FINDTCA:
               ,VinfEtOffset=None
               ,VinfEtStep=None
               ,VinfEtNum=None
-              ,ltcorrIn='NONE'
+              ,ltcorrIn='LT'
               ,kernels=[]
               ,nounloadkernels=False
               ):
@@ -254,7 +254,7 @@ class FINDTCA:
       self.sun_pos_j2k = stSun[:3] if vld else self.obs_vel_j2k
       self.sun_status = vld and 'OK' or 'SPICE CALL FAILED; USING UPTRACK'
 
-      self.sun_azel_fb = sp.recrad(sp.mxv(mtx_trajPln,self.sun_pos_j2k))[1:]
+      self.sun_azel_fb = sp.vscl(sp.dpr(),sp.reclat(sp.mxv(mtx_trajPln,self.sun_pos_j2k)))[1:]
 
       self.JDTdbTca = sp.j2000() + (etEst / spd)
       etcal = sp.etcal(etEst)
