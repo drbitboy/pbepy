@@ -162,7 +162,7 @@ class PBE:
     ###   * Vinf or Vtarg is horizontal, Downtrack is Left
     ###   * VInfPerp and VTargPerp are Up
 
-    vInf = sp.vpack(*list(pbeStr.mtx_j2k2Uncert.T[0]))
+    vInf = pbeStr.mtx_j2k2Uncert[0].flatten()
     self.nomVinfPerp_J2k = vInfPerp = sp.ucrss(stJ2k[:3], vInf)
     vTargPerp = sp.ucrss(stJ2k[3:], stJ2k[:3])
     self.projVinfVtargRot_Deg = sp.vsep(vInfPerp,vTargPerp) * dpr
