@@ -57,7 +57,7 @@ Uncertainties class for MU69 flyby
 
     ### ToF Axes of ellipse in J2000 frame
     rawCHat, rawBHat, rawAHat = vinfOut.mtx_j2b
-    rawBHat -= 1.0
+    rawBHat *= -1.0
     ### +Zbpl = ToF(findvinf)   = ToF   = A-hat
     ### -Ybpl = BdotT(findvinf) = Bnorm = B-hat
     ### +Xbpl = BdotR(findving) = Bmag  = C-hat
