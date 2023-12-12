@@ -1,5 +1,6 @@
 import spiceypy as sp
 from kinetx_mu69_20180626 import KINETX_MU69_20180626
+from kinetx_eurybates_20231211 import KINETX_EURYBATES_20231211
 ########################################################################
 ### Wrapper for current info from Kinetx
 ########################################################################
@@ -13,6 +14,10 @@ def kinetxcurrent(target=None):
     import traceback
     traceback.print_exc()
     assert False,f'Could not understand target [{sTarget}]'
+
+  ### Eurybates => SPICE ID 2486958
+  if iTarget == 920003548:
+    return KINETX_EURYBATES_20231211()
 
   ### MU69 => SPICE ID 2486958
   ### MU69_BARYCENTER => SPICE ID 2486959

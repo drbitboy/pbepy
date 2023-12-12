@@ -30,7 +30,7 @@ ftca_furnsh:  FINDTCA support procedure,
 
 
 #######################################################################n
-def ftca_getrange(targ, obs, et, ltcorrIn='LT'):
+def ftca_getrange(targ, obs, et, ltcorrIn='LT',debug=False):
   """
 ftca_getrange:  FINDTCA support function, get range from observer (obs)
                 to target (targ) at et (TDB) using light time correction
@@ -38,12 +38,11 @@ ftca_getrange:  FINDTCA support function, get range from observer (obs)
                 the observer to target, light time, light time corr used
 
 """
-  ltime = -1e0 / sp.clight()
   try:
     stOut, ltime = sp.spkezr(targ,et,'J2000',ltcorrIn,obs)
     return ltime*sp.clight(),stOut,ltime,ltcorrIn
   except:
-    pass
+    if debug: traceback.print_exc()
 
   return -1e0,numpy.array([0e0]*6),-1e0/clight,ltcorrIn
 
@@ -118,6 +117,7 @@ class FINDTCA:
 
     self.Target = targ = ftca_getopt('PLUTO', targArg, 'FINDTCA_TARGET')[0]
     self.Obs = obs = ftca_getopt('-98', obsArg, 'FINDTCA_OBSERVER')[0]
+    self.lt = ltcorrIn
 
     ### use UTC estimate if given as argument,
     ### else use kernel pool variable FINDTCA_UTCEST
@@ -157,7 +157,9 @@ class FINDTCA:
 
         ### Extend calculated ranges forward in time
         i0 = iCenter+i
-        ranges[i0] = ftca_getrange(targ,obs,etEst+dt,ltcorrIn=ltcorrIn)[0]
+        ranges[i0] = ftca_getrange(targ,obs,etEst+dt,ltcorrIn=self.lt)[0]
+        #print({i0:(ranges[i0],targ,obs,sp.etcal(etEst+dt),)})
+        if ranges[i0] > 4e7: ranges[i0] = -1e0
 
         ### If three ranges backward from i0 have positive ranges, ...
         if min(ranges[i0-2:i0+1]) > 0e0:
@@ -168,7 +170,9 @@ class FINDTCA:
 
         ### Extend calculated ranges backward in time
         i0 = iCenter-i
-        ranges[i0] = ftca_getrange(targ,obs,etEst-dt,ltcorrIn=ltcorrIn)[0]
+        ranges[i0] = ftca_getrange(targ,obs,etEst-dt,ltcorrIn=self.lt)[0]
+        #print({i0:(ranges[i0],targ,obs,sp.etcal(etEst+dt),)})
+        if ranges[i0] > 4e7: ranges[i0] = -1e0
 
         ### If three ranges forward from i0 have positive ranges, ...
         if min(ranges[i0:i0+3]) > 0e0:
@@ -179,10 +183,19 @@ class FINDTCA:
         ### Next increment forward or backward in time
         i += 1
 
+      """
+      print(dict(i0=i0,iMin=iMin,iCenter=iCenter,ltcorrIn=ltcorrIn
+                ,utcEst=sp.etcal(etEst),dt=dt
+                ,utcplus=sp.etcal(etEst+dt)
+                ,utcminus=sp.etcal(etEst-dt)
+                ))
+      """
+
       ### If NO success at any time and ltcorrIn was not specified
       ### (so FTCA_GETRANGE defaulted to 'LT' correction), then try
       ### repeating the calculations without the correction
 
+      self.msg = 'OK'
       if iMin < 0:
 
         ### Fail with an error message if ltcorrIn argument is 'NONE' ...
@@ -202,7 +215,7 @@ class FINDTCA:
         self.none_ltcorr_msg = self.msg
         self.msg = 'WARNING:  FAILED WITH LIGHT TIME CORRECTION; RE-TRYING WITHOUT ...'
 
-        assert False
+        #assert False,self.msg
 
       ### Use Newton-Raphson to find TCA
 
@@ -215,10 +228,14 @@ class FINDTCA:
         oldRange = ranje
         oldEt = etEst
         (ranje,stOut,unused1,unused2
-        ,) = ftca_getrange(targ,obs,oldEt,ltcorrIn=ltcorrIn)
+        ,) = ftca_getrange(targ,obs,oldEt,ltcorrIn=self.lt,debug=True)
         p=stOut[:3]
         v=stOut[3:]
-        delEst = - sp.vdot(p,v) / sp.vdot(v,v)
+        try: delEst = - sp.vdot(p,v) / sp.vdot(v,v)
+        except:
+          traceback.print_exc()
+          print(dict(v=v,p=p,targ=targ,obs=obs,ftca_getrange=(ranje,stOut,unused1,unused2,)))
+          raise
         etEst = oldEt + delEst
         delEstActual = etEst - oldEt
         i=i+1
@@ -230,7 +247,7 @@ class FINDTCA:
       self.ca_dist_err:  abs(ranje-oldRange)
 
       (ranje,stOut,ltimeOut,self.lt_corr
-      ,) = ftca_getrange(targ,obs,etEst,ltcorrIn=ltcorrIn)
+      ,) = ftca_getrange(targ,obs,etEst,ltcorrIn=self.lt)
 
       targPosJ2k = stOut[:3]
       targVelJ2k = stOut[3:]
@@ -247,7 +264,7 @@ class FINDTCA:
       mtx_trajPln = sp.twovec(targPosJ2k,1,self.obs_vel_j2k,2)
 
       (sunRange,stSun,unused1,unused2
-      ,) = ftca_getrange('SUN',targ,etEst-ltimeOut,ltcorrIn=ltcorrIn)
+      ,) = ftca_getrange('SUN',targ,etEst-ltimeOut,ltcorrIn=self.lt)
 
       vld = sunRange > -1e0   ### Sun lookup was valid
 

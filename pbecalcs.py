@@ -65,7 +65,7 @@ class PBESTRUCT:
         except: t = 0e0
       else    : t = radi
       self.TargRadius = float(t)
- 
+
       self.kinetx = kinetx = kinetxcurrent(target=targArg)
 
       ### KGET defaults to Knowledge Sigmas
@@ -226,7 +226,7 @@ class PBE:
         pbeStr.pluEphemUncert = [0e0,0,0]
         pbeStr.pluEphemUncertSource = 'N/A'
         if targID != targIDclass and sp.vnorm(abcTarg) == 0e0:
-          print('WARNING:  MU69 satellite barycenter-relative uncertainty is zero; consider using keyword argument satEArg')
+          print('WARNING:  MU69 satellite barycenter-relative uncertainty is zero; consider using keyword argument satE')
 
     elif targIDclass == 999:
       abcPlu = sp.vpack(0,0,0)             ### Pluto:  no other required
@@ -242,7 +242,7 @@ class PBE:
         pbeStr.pluEphemUncert = abcTargStr.sigmaRTN / 10e0
         pbeStr.pluEphemUncertSource = 'sqrt(.21) of Target (Charon)'
 
-    else:                                 ### Nix & Hydra:  add Pluto
+    elif targIDclass > 901 and targIDclass < 999: ### Nix & Hydra:  add Pluto
       abcPlutoStr = FINDSATEPHUNCABC( '999'
                                     , observer=pbeStr.ObsName
                                     , sigmaRTN=pStE
@@ -253,6 +253,15 @@ class PBE:
       if iUTC == 0 and idEt == 0:
         pbeStr.pluEphemUncert = abcPlutoStr.sigmaRTN
         pbeStr.pluEphemUncertSource = abcPlutoStr.sigmaRTNSource
+
+    else:
+      abcPlu = sp.vpack(0,0,0)  ### Single body?  No other required
+      if iUTC == 0 and idEt == 0:
+        pbeStr.pluEphemUncert = [0e0,0,0]
+        pbeStr.pluEphemUncertSource = 'N/A'
+        if targID != targIDclass and sp.vnorm(abcTarg) == 0e0:
+          print('WARNING:  ???? satellite barycenter-relative uncertainty is zero; consider using keyword argument satE')
+
 
     ### RSS Plumped:  sqRt of Sum Squared; scaled by sigma multiple
 
