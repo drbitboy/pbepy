@@ -4,7 +4,7 @@ import pbecalcs
 
 os.system("kernels/eurybstuff/mk.tm --get-kernels")
 
-pc = pbecalcs.PBESTRUCT('eurybates','lucy',kern=["kernels/eurybstuff/mk.tm", "/home/brian/lucy/kernels/spk/de430s.bsp"])
+pc = pbecalcs.PBESTRUCT('eurybates','lucy',kern=["kernels/eurybstuff/mk.tm","de430s.bsp"])
 pprint.pprint(dict(pbecalcs=vars(pc)
                   ,pbecalcs_kinetx=vars(pc.kinetx)
                   ,pbecalcs_pbeArr00=vars(pc.pbeArr[0,0])

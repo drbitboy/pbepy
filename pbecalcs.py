@@ -61,7 +61,7 @@ class PBESTRUCT:
       except: pass
 
       if radi is None:
-        try   : t = numpy.max(sp.bodvcd(self.TargID,'RADII',4))
+        try   : t = numpy.max(sp.bodvcd(self.TargID,'RADII',4)[-1])
         except: t = 0e0
       else    : t = radi
       self.TargRadius = float(t)
@@ -117,7 +117,7 @@ class PBESTRUCT:
                    for iUTC in range(nUTCs)
                   ]
 
-    self.pbeArr = numpy.array(arr)
+    self.pbeArr = numpy.array(arr,dtype=object)
     """
     self.pbeArr = numpy.array(
                   [[lpbe(iUTC,idEt) for idEt in range(ndEts)]
