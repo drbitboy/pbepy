@@ -38,21 +38,23 @@ def getDataLbl(fn,nLbl,nNameLbl,userLabelArg,vArr):
 
 
 ########################################################################
-def pbe2mdl( abcArg
-           , r
-           , fn
-           , iWhichPbeArrArg=0
-           , downtrackScaleArg=1.0
-           , uptrackScaleArg=1.0
-           , resolutionArg=5.0
-           , mtxJ2k2UncertArg=sp.ident()
-           , userCommentsArg=None
-           , nameLabelArg=None
+def pbe2mdl( abcArg                       ### Ellipsoid semi-axes data*
+           , r                            ### Radius bump
+           , fn                           ### output MDL filename
+           , iWhichPbeArrArg=0            ### Index into abcArg.pbeArr
+           , downtrackScaleArg=1.0        ### Downtrack scaling
+           , uptrackScaleArg=1.0          ### Uptrack scaling
+           , resolutionArg=5.0            ### Nom. MDL resolution, deg
+           , mtxJ2k2UncertArg=sp.ident()  ### Ellipsoid orientation, J2k
+           , userCommentsArg=None         ### User comments for MDL
+           , nameLabelArg=False           ### Write fn to MDL comments?
            , userLabelArg=None
            , wrlArg=False
            , debugArg=None
            ):
   """Write STK MDL of Plumped Bumped Ellipse (PBE)"""
+
+  ### * May be an instance of the PBESTRUCT class; see pbecalcs.py
 
   ### Misc constants
   dpr,halfpi,onepi,twopi = sp.dpr(),sp.halfpi(),sp.pi(),sp.twopi()
@@ -113,7 +115,7 @@ def pbe2mdl( abcArg
       try:
         abc = makevec(abcArg[0][iWhichPbeArr].plumpedABC[:3])
       except:
-        assert False,'Unable to get ABC values from argument [{abcArg}]'
+        assert False,f'Unable to get ABC values from argument [{abcArg}]'
 
   ######################################################################
   ### Override any previous mtxJ2u with argument:

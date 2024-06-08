@@ -129,7 +129,7 @@ class PBESTRUCT:
     self.status = 'PBEcalcs OK'
     self.msg = 'OK'
 
-    for k in kern: sp.unload(k)
+    if unloadKernelsOnExit: [sp.unload(k) for k in kern]
 
 
 ########################################################################
