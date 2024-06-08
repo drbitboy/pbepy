@@ -71,7 +71,7 @@ class PBESTRUCT:
       ### KGET defaults to Knowledge Sigmas
 
       if sigm is None: self.baseSigmas = kinetx.kget(DeSig=DelivSigmas)
-      else           : self.baseSigmas = list(map(float,sigm))
+      else           : self.baseSigmas = numpy.array(list(map(float,sigm)),dtype=numpy.float64)
 
       if mJ2u is None: self.mtx_j2k2Uncert  = kinetx.mJ2u
       else           : self.mtx_j2k2Uncert = mJ2u

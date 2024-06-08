@@ -101,7 +101,7 @@ def pbe2mdl( abcArg
       ### Get plumped ABC and J2k-to-ABC xform from PBECALCS.PRO return value
 
       (abc,sigmaMultiple,baseSigmas,satRTN,pluRTN,pluRTNsrc,mtxJ2uLcl
-      ,) = (makevec(abcArg.pbeArr[iWhichPbeArr].plumpedABC[:3])
+      ,) = (makevec(abcArg.pbeArr[0][iWhichPbeArr].plumpedABC[:3])
            ,str(abcArg.sigmaMultiple).strip()
            ,v2s(abcArg.baseSigmas)
            ,v2s(abcArg.satEphemUncert)
@@ -111,7 +111,7 @@ def pbe2mdl( abcArg
            ,)
     except:
       try:
-        abc = makevec(abcArg[iWhichPbeArr].plumpedABC[:3])
+        abc = makevec(abcArg[0][iWhichPbeArr].plumpedABC[:3])
       except:
         assert False,'Unable to get ABC values from argument [{abcArg}]'
 
@@ -137,7 +137,7 @@ def pbe2mdl( abcArg
 
   ### Build array with number of longitude vertices per parallel
 
-  nlonsArr = numpy.round(nlon0 * numpy.cos(latsArr)).astype(numpy.int)
+  nlonsArr = numpy.round(nlon0 * numpy.cos(latsArr)).astype(numpy.int32)
 
   ### Ensure there are at least six vertices per parallel, except at the
   ### two poles, which have one each
