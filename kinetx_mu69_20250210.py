@@ -4,7 +4,7 @@ from findtca import FINDTCA
 from findvinf import FINDVINF
 from kinetxbase import KINETXBASE
 
-class KINETX_EURYBATES_20231211(KINETXBASE):
+class KINETX_MU69_20180626(KINETXBASE):
   """
 Uncertainties class for MU69 flyby
 
@@ -21,25 +21,19 @@ Uncertainties class for MU69 flyby
  .KinetxCall     ### Name of this routine
 
 """
-
-  TARGET_BARYCENTER = __name__.split('_')[1].upper() + '_BARYCENTER'
-  TARGET = __name__.split('_')[1].upper()
-  SPACECRAFT = 'LUCY'
-  TCA_APPROX = '2027-08-12 12:00:00'
-  
   def __init__(self):
 
-    self.provenance = [ '20211211:  placeholder'
+    self.provenance = [ '20180626:  placeholder'
                       , ' - no matrix available yet'
                       , ' - Used Vinf to set A-hat, B-hat, C-hat'
                       , ' - Set delivery sigma to 1.5A, 2B, 4C'
                       ]
 
-    ### Nominal 1-sigma values, Lucy, pure guesstimates
+    ### Nominal 1-sigma values, NH S/C wrt MU69 or MU69_barycenter, km
     ### - These will typically be overidden by the [sigm=] keyword to
     ###   pbecalcs, so only the matrix will be used here
-    ###                       TOF, s; Bnorm, km; Bmag, km
-    self.sigmas = numpy.array([1000e0, 50e0,      51e0])
+    ###                        TOF, km; Bnorm, km; Bmag, km
+    self.sigmas = numpy.array([7215e0,  96e0,      105e0])
 
     ####################################################################
     ### Placeholders ca. 2017-11-08
@@ -58,10 +52,8 @@ Uncertainties class for MU69 flyby
 
     ###   values B-plane A-hat, B-hat, C-hat
 
-    TcaOut = FINDTCA( self.TARGET, self.SPACECRAFT
-                    , utcEstArg=self.TCA_APPROX
-                    )
-    vinfOut = FINDVINF( TcaOut, self.TARGET)
+    TcaOut = FINDTCA( '2486958', '-98', utcEstArg='2019-01-01T12:00:00')
+    vinfOut = FINDVINF( TcaOut, '2486958')
 
     ### ToF Axes of ellipse in J2000 frame
     rawCHat, rawBHat, rawAHat = vinfOut.mtx_j2b
@@ -76,14 +68,44 @@ Uncertainties class for MU69 flyby
     ###   - Division by TcaOut.speed converts A_km to A_s
     ### *** N.B. these are placholders
 
-    delivTimeKmKm = self.sigmas * numpy.array([1.0/TcaOut.speed,1e0,1e0])
+    delivTimeKmKm = self.sigmas * numpy.array([1.5/TcaOut.speed,2e0,4e0])
 
     ### End placeholder
     ######################################################################
 
     ######################################################################
+    ### Future:  B-plane matrix and delivery denominator come from KinetX
+    ###          document, typically an email, stored in array of strings
+    ###          as the variable provenance, above
+    ###
+    ### It will likely look look similar to this in provenance:
+    ###   ...
+    ###   , '' $
+    ###   , '  1-sigma requirement numbers:' $
+    ###   , '' $
+    ###   , '   |A| [km] = l*Vinf  1378	' $
+    ###   , '   |B| [km] = n       66' $
+    ###   , '   |C| [km] = m       33' $
+    ###   , '   A-hat (x,y,z)   0.0113423      -0.9678945       -0.2511008' $
+    ###   , '   B-hat (x,y,z)  -0.4532379       0.21886297      -0.8641033' $
+    ###   , '   C-hat (x,y,z)   0.89131745      0.12360932      -0.436204' $
+    ###   , '' $
+    ###   ...
+    ###
+    ### rawZHat = [   0.0113423e0,   -0.9678945e0,   -0.2511008e0 ]  ### Axes of ellipse
+    ### rawBHat = [  -0.4532379e0,    0.21886297e0,  -0.8641033e0 ]  ###   in J2000
+    ### rawCHat = [   0.89131745e0,   0.12360932e0,  -0.436204e0  ]  ###     frame
+    ###
+    ### Delivery uncertainties are in Time (for A) and km (for B & C)
+    ### - Will be sourced from provenance document
+    ###
+    ### delivTimeKmKm = [A_seconds, B_km, C_km]
     ######################################################################
-    ### From here, all versions of kinetx_*_*.py will perform the
+
+
+    ######################################################################
+    ######################################################################
+    ### From here, all versions of kinetx_mu69_*.py will perform the
     ### same calculations
 
     ### Compile raw*Hat vectors into matrix
@@ -94,18 +116,17 @@ Uncertainties class for MU69 flyby
 
     self.eigVals = self.sigmas*self.sigmas
 
-    ### Alignment is along Vinfinity of spacecraft either wrt
-    ### self.TARGET, or self.TARGET_BARYCENTER
-    ### - N.B. this sets TcaOut.target to self.TARGET either way, which
-    ###        is used elsewhere, specifically in PBECALCS, which passes
+    ### Alignment is along Vinfinity of spacecraft (-98) either wrt MU69
+    ### (SPICE ID 2486958), or wrt MU69_barycenter (also SPICE ID 2486958),
+    ### on 2019-01-01
+    ### - N.B. this sets TcaOut.target to '2486958' either way, which is
+    ###        used elsewhere, specifically in PBECALCS, which passes
     ###        kinetx.Tca.target as the value keyword argument tcaTarget
     ###        in calls to FINDSATEPHUNCABC
 
     ### May duplicate calls above
-    self.Tca = FINDTCA( self.TARGET, self.SPACECRAFT
-                      , utcEstArg=self.TCA_APPROX
-                      )
-    self.Vinf = FINDVINF( self.Tca, self.TARGET)
+    self.Tca = FINDTCA( '2486958', '-98', utcEstArg='2019-01-01T12:00:00')
+    self.Vinf = FINDVINF( self.Tca, '2486958')
 
     ### mEig => B-plane to Uncertainty:
     ###                                 T

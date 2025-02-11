@@ -4,9 +4,9 @@ from findtca import FINDTCA
 from findvinf import FINDVINF
 from kinetxbase import KINETXBASE
 
-class KINETX_EURYBATES_20231211(KINETXBASE):
+class KINETX_DONALDJOHANSON_20250210(KINETXBASE):
   """
-Uncertainties class for MU69 flyby
+Uncertainties class for Lucy flyby of 52246 Donald Johanson
 
  .provenance     ### Like it says
  .mJ2b           ### xform from J2000 to Bplane
@@ -22,27 +22,26 @@ Uncertainties class for MU69 flyby
 
 """
 
-  TARGET_BARYCENTER = __name__.split('_')[1].upper() + '_BARYCENTER'
   TARGET = __name__.split('_')[1].upper()
   SPACECRAFT = 'LUCY'
-  TCA_APPROX = '2027-08-12 12:00:00'
+  TCA_APPROX = '2025-04-20 12:00:00'
   
   def __init__(self):
 
-    self.provenance = [ '20211211:  placeholder'
+    self.provenance = [ '20250210:  placeholder'
                       , ' - no matrix available yet'
                       , ' - Used Vinf to set A-hat, B-hat, C-hat'
                       , ' - Set delivery sigma to 1.5A, 2B, 4C'
                       ]
 
-    ### Nominal 1-sigma values, Lucy, pure guesstimates
+    ### Nominal knowledge 1-sigma values, Lucy, pure guesstimates
     ### - These will typically be overidden by the [sigm=] keyword to
     ###   pbecalcs, so only the matrix will be used here
-    ###                       TOF, s; Bnorm, km; Bmag, km
-    self.sigmas = numpy.array([1000e0, 50e0,      51e0])
+    ###                        TOF, km; Bnorm, km; Bmag, km
+    self.sigmas = numpy.array([30e0,    10e0,      5e0])
 
     ####################################################################
-    ### Placeholders ca. 2017-11-08
+    ### Placeholders ca. 2025-02-10
     ### - We should not need to call FINDTCA/FINDVINF when we get explicit
     ###     values for the vectors for rawAHat, rawBHat and rawCHat
     ### - findving return struct vinfOut provides, in rows of mtx_j2b,
@@ -76,7 +75,8 @@ Uncertainties class for MU69 flyby
     ###   - Division by TcaOut.speed converts A_km to A_s
     ### *** N.B. these are placholders
 
-    delivTimeKmKm = self.sigmas * numpy.array([1.0/TcaOut.speed,1e0,1e0])
+    delivTimeKmKm = self.sigmas * numpy.array([1.5, 2.0, 4.0])
+    delivTimeKmKm *= numpy.array([1.0/TcaOut.speed,1e0,1e0])
 
     ### End placeholder
     ######################################################################
