@@ -4,7 +4,7 @@ from findtca import FINDTCA
 from findvinf import FINDVINF
 from kinetxbase import KINETXBASE
 
-class KINETX_POLYMELE_20250210(KINETXBASE):
+class KINETX_POLYMELE(KINETXBASE):
   """
 Uncertainties class for Lucy flyby of Polymele, Shaun(?), ...
 

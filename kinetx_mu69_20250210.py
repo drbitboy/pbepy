@@ -4,7 +4,7 @@ from findtca import FINDTCA
 from findvinf import FINDVINF
 from kinetxbase import KINETXBASE
 
-class KINETX_MU69_20180626(KINETXBASE):
+class KINETX_MU69(KINETXBASE):
   """
 Uncertainties class for MU69 flyby
 

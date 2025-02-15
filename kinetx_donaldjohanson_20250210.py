@@ -4,7 +4,7 @@ from findtca import FINDTCA
 from findvinf import FINDVINF
 from kinetxbase import KINETXBASE
 
-class KINETX_DONALDJOHANSON_20250210(KINETXBASE):
+class KINETX_DONALDJOHANSON(KINETXBASE):
   """
 Uncertainties class for Lucy flyby of 52246 Donald Johanson
 
