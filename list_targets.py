@@ -1,3 +1,11 @@
+"""
+Usage:
+
+  python list_targets.py .../mk/*.tm .../spk/*_[19]20000617.bsp --check
+
+  N.B. ...20000617.bsp FURNSHes Patroclus and Menoetius ephemerides
+
+"""
 import os
 import sys
 import kinetxcurrent
