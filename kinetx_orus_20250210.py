@@ -4,9 +4,9 @@ from findtca import FINDTCA
 from findvinf import FINDVINF
 from kinetxbase import KINETXBASE
 
-class KINETX_PATROCLUS(KINETXBASE):
+class KINETX_ORUS(KINETXBASE):
   """
-Uncertainties class for Lucy flyby of 617 Patroclus, Menoetius
+Uncertainties class for Lucy flyby of 21900 Orus
 
  .provenance     ### Like it says
  .mJ2b           ### xform from J2000 to Bplane
@@ -22,10 +22,9 @@ Uncertainties class for Lucy flyby of 617 Patroclus, Menoetius
 
 """
 
-  TARGET_BARYCENTER = __name__.split('_')[1].upper() + '_BARYCENTER'
   TARGET = __name__.split('_')[1].upper()
   SPACECRAFT = 'LUCY'
-  TCA_APPROX = '2033-03-03 12:00:00'
+  TCA_APPROX = '2028-11-11 12:00:00'
   
   def __init__(self):
 

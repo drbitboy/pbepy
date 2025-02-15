@@ -1,5 +1,7 @@
 import spiceypy as sp
 from kinetx_mu69_20250210 import KINETX_MU69
+from kinetx_orus_20250210 import KINETX_ORUS
+from kinetx_leucus_20250210 import KINETX_LEUCUS
 from kinetx_polymele_20250210 import KINETX_POLYMELE
 from kinetx_patroclus_20250210 import KINETX_PATROCLUS
 from kinetx_dinkinesh_20250210 import KINETX_DINKINESH
@@ -18,6 +20,18 @@ def kinetxcurrent(target=None):
     import traceback
     traceback.print_exc()
     assert False,f'Could not understand target [{sTarget}]'
+
+  ######################################################################
+  ### Lucy targets
+  ######################################################################
+
+  ### ORUS                => SPICE ID 20021900
+  if (iTarget % 100000000) == 20021900:
+    return KINETX_ORUS()
+
+  ### Leucus              => SPICE ID 20011351
+  if (iTarget % 100000000) == 20011351:
+    return KINETX_LEUCUS()
 
   ### Polymele            => SPICE ID 920015094
   ### Polymele_Barycenter => SPICE ID  20015094
@@ -46,6 +60,10 @@ def kinetxcurrent(target=None):
   ### Queta                => SPICE ID 120003458
   if (iTarget % 100000000) == 20003548:
     return KINETX_EURYBATES()
+
+  ######################################################################
+  ### New Horizon targets
+  ######################################################################
 
   ### MU69            => SPICE ID 2486958
   ### MU69_BARYCENTER => SPICE ID 2486959
