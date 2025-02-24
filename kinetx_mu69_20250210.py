@@ -21,9 +21,14 @@ Uncertainties class for MU69 flyby
  .KinetxCall     ### Name of this routine
 
 """
+
+  PRIMARY = __name__.split('_')[1].upper()
+  SPACECRAFT = 'NEW HORIZONS'
+  TCA_APPROX = '2019-01-01T12:00:00'
+
   def __init__(self):
 
-    self.provenance = [ '20180626:  placeholder'
+    self.provenance = [ '20250210:  placeholder'
                       , ' - no matrix available yet'
                       , ' - Used Vinf to set A-hat, B-hat, C-hat'
                       , ' - Set delivery sigma to 1.5A, 2B, 4C'
@@ -52,8 +57,9 @@ Uncertainties class for MU69 flyby
 
     ###   values B-plane A-hat, B-hat, C-hat
 
-    TcaOut = FINDTCA( '2486958', '-98', utcEstArg='2019-01-01T12:00:00')
-    vinfOut = FINDVINF( TcaOut, '2486958')
+    TcaOut = FINDTCA( self.PRIMARY, self.SPACECRAFT
+                    , utcEstArg=self.TCA_APPROX)
+    vinfOut = FINDVINF( TcaOut, self.PRIMARY)
 
     ### ToF Axes of ellipse in J2000 frame
     rawCHat, rawBHat, rawAHat = vinfOut.mtx_j2b
@@ -125,8 +131,9 @@ Uncertainties class for MU69 flyby
     ###        in calls to FINDSATEPHUNCABC
 
     ### May duplicate calls above
-    self.Tca = FINDTCA( '2486958', '-98', utcEstArg='2019-01-01T12:00:00')
-    self.Vinf = FINDVINF( self.Tca, '2486958')
+    TcaOut = FINDTCA( self.PRIMARY, self.SPACECRAFT
+                    , utcEstArg=self.TCA_APPROX)
+    vinfOut = FINDVINF( TcaOut, self.PRIMARY)
 
     ### mEig => B-plane to Uncertainty:
     ###                                 T

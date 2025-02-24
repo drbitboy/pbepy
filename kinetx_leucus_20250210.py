@@ -22,7 +22,7 @@ Uncertainties class for Lucy flyby of 11351 Leucus
 
 """
 
-  TARGET = __name__.split('_')[1].upper()
+  PRIMARY = __name__.split('_')[1].upper()
   SPACECRAFT = 'LUCY'
   TCA_APPROX = '2028-04-18 12:00:00'
   
@@ -57,10 +57,10 @@ Uncertainties class for Lucy flyby of 11351 Leucus
 
     ###   values B-plane A-hat, B-hat, C-hat
 
-    TcaOut = FINDTCA( self.TARGET, self.SPACECRAFT
+    TcaOut = FINDTCA( self.PRIMARY, self.SPACECRAFT
                     , utcEstArg=self.TCA_APPROX
                     )
-    vinfOut = FINDVINF( TcaOut, self.TARGET)
+    vinfOut = FINDVINF( TcaOut, self.PRIMARY)
 
     ### ToF Axes of ellipse in J2000 frame
     rawCHat, rawBHat, rawAHat = vinfOut.mtx_j2b
@@ -95,17 +95,17 @@ Uncertainties class for Lucy flyby of 11351 Leucus
     self.eigVals = self.sigmas*self.sigmas
 
     ### Alignment is along Vinfinity of spacecraft either wrt
-    ### self.TARGET, or self.TARGET_BARYCENTER
-    ### - N.B. this sets TcaOut.target to self.TARGET either way, which
+    ### self.PRIMARY, or self.PRIMARY_BARYCENTER
+    ### - N.B. this sets TcaOut.target to self.PRIMARY either way, which
     ###        is used elsewhere, specifically in PBECALCS, which passes
     ###        kinetx.Tca.target as the value keyword argument tcaTarget
     ###        in calls to FINDSATEPHUNCABC
 
     ### May duplicate calls above
-    self.Tca = FINDTCA( self.TARGET, self.SPACECRAFT
+    self.Tca = FINDTCA( self.PRIMARY, self.SPACECRAFT
                       , utcEstArg=self.TCA_APPROX
                       )
-    self.Vinf = FINDVINF( self.Tca, self.TARGET)
+    self.Vinf = FINDVINF( self.Tca, self.PRIMARY)
 
     ### mEig => B-plane to Uncertainty:
     ###                                 T

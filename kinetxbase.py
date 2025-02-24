@@ -2,6 +2,9 @@ import numpy
 class KINETXBASE:
   """Base class for KinetX data (delivery and knowledge uncertainties"""
 
+  ### To be overridden in systems with a primary and multiple satellites
+  PRIMARY_BARYCENTER = False
+
   def __init__(self): pass
 
   def kget(self

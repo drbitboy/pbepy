@@ -22,8 +22,10 @@ Uncertainties class for Lucy flyby of Polymele, Shaun(?), ...
 
 """
 
-  TARGET_BARYCENTER = __name__.split('_')[1].upper() + '_BARYCENTER'
-  TARGET = __name__.split('_')[1].upper()
+  ### For now, POLYMELE_BARYCENTER does not exist in SPICE NAME/BODY
+  ### pairs, so use body Polymele as its own barycenter for now.
+  PRIMARY_BARYCENTER = __name__.split('_')[1].upper() ###+ '_BARYCENTER'
+  PRIMARY = __name__.split('_')[1].upper()
   SPACECRAFT = 'LUCY'
   TCA_APPROX = '2027-09-15 12:00:00'
   
@@ -58,17 +60,17 @@ Uncertainties class for Lucy flyby of Polymele, Shaun(?), ...
 
     ###   values B-plane A-hat, B-hat, C-hat
 
-    TcaOut = FINDTCA( self.TARGET, self.SPACECRAFT
+    TcaOut = FINDTCA( self.PRIMARY, self.SPACECRAFT
                     , utcEstArg=self.TCA_APPROX
                     )
-    vinfOut = FINDVINF( TcaOut, self.TARGET)
+    vinfOut = FINDVINF( TcaOut, self.PRIMARY)
 
     ### ToF Axes of ellipse in J2000 frame
     rawCHat, rawBHat, rawAHat = vinfOut.mtx_j2b
     rawBHat *= -1.0
     ### +Zbpl = ToF(findvinf)   = ToF   = A-hat
     ### -Ybpl = BdotT(findvinf) = Bnorm = B-hat
-    ### +Xbpl = BdotR(findving) = Bmag  = C-hat
+    ### +Xbpl = BdotR(findvinf) = Bmag  = C-hat
 
     ### - Delivery 1-sigma values; [A, B, C]; units are s, km, km
     ###   - A, B and C delivery 1-sigma values scaled from knowledge
@@ -96,17 +98,17 @@ Uncertainties class for Lucy flyby of Polymele, Shaun(?), ...
     self.eigVals = self.sigmas*self.sigmas
 
     ### Alignment is along Vinfinity of spacecraft either wrt
-    ### self.TARGET, or self.TARGET_BARYCENTER
-    ### - N.B. this sets TcaOut.target to self.TARGET either way, which
+    ### self.PRIMARY, or self.PRIMARY_BARYCENTER
+    ### - N.B. this sets TcaOut.target to self.PRIMARY either way, which
     ###        is used elsewhere, specifically in PBECALCS, which passes
     ###        kinetx.Tca.target as the value keyword argument tcaTarget
     ###        in calls to FINDSATEPHUNCABC
 
     ### May duplicate calls above
-    self.Tca = FINDTCA( self.TARGET, self.SPACECRAFT
+    self.Tca = FINDTCA( self.PRIMARY, self.SPACECRAFT
                       , utcEstArg=self.TCA_APPROX
                       )
-    self.Vinf = FINDVINF( self.Tca, self.TARGET)
+    self.Vinf = FINDVINF( self.Tca, self.PRIMARY)
 
     ### mEig => B-plane to Uncertainty:
     ###                                 T
