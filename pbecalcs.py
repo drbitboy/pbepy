@@ -1,10 +1,11 @@
+import os
 import math
 import numpy
 import collections
 import spiceypy as sp
 from pbebump import PBEBUMP
 from kinetxcurrent import kinetxcurrent
-from findsatephuncabc import FINDSATEPHUNCABC
+from findsatephuncabc import FINDSATEPHUNCABC,PRIM,CORR,SATE,UNKN
 
 spd,dpr = sp.spd(),sp.dpr()
 
@@ -22,22 +23,25 @@ spd,dpr = sp.spd(),sp.dpr()
 class PBESTRUCT:
 
   def __init__(self
-, targArg=2486958### STRING, default = '2486958' (MU69)
-, obsArg=-98     ### STRING, default = '-98' (New Horizons)
+, targArg='POLYMELE' ### STRING, target, default = 'POLYMELE'
+, obsArg='LUCY'  ### STRING, default = '-98' (New Horizons)
 , kern=[]        ### STRING[], SPICE kernels to load and unload
 , ukoe=False     ### /ukoe = Unload SPICE Kernels On Exit
 , radi=None      ### DOUBLE, Target radius for bumping, km
 , UTCsArg=[]     ### STRING[], UTCs for which to calculate info
 , dEtsArg=[]     ### DOUBLE, delta ET to add to UTCs for times at which to calc
-, sigm=None      ### DOUBLE[3], ell sigmas, km; dflt=>use kinetxcurrent(target=targArg)
+, sigm=None      ### DOUBLE[3], S/C ephemeris error wrt primary, km; dflt=>use kinetxcurrent(target=targArg)
 , mJ2u=None      ### DOUBLE[3,3], J2k to T],[LTOF]], dflt=> findvinf()
 , nSig=2e0       ### DOUBLE, Sigma multiple to use, dflt=2
-, satE=0e0       ### DOUBLE, Satellite ephemeris error, km, dflt=[0,0,0]
-, pStE=None      ### DOUBLE, Pluto err, NIX & HYDRA only, km, dflt=findsatephuncabc
+, satE=None      ### DOUBLE, target ephemeris error wrt bary, target as non-primary only, km, dflt=[0,0,0]
+, pStE=None      ### DOUBLE, primary ephemeris error wrt bary, target as non-primary only, km, dflt=findsatephuncabc
 , mdlF=None      ### STRING, => MDL file name to which to write PBE for STK
 , datF=None      ### STRING, => Flat ASCII filename to which to write info
 , DelivSigmas=False ### Misc keywords
 ):
+    if 'DEBUG' in os.environ:
+      import pprint
+      pprint.pprint(dict(PBESTRUCT_locals=locals()))
     unloadKernelsOnExit = ukoe and True or False
     self.success = False
     self.status = 'PBEcalcs SKIPPED'
@@ -80,11 +84,7 @@ class PBESTRUCT:
       self.mdlFilename = mdlF
       self.dataFilename = datF
 
-      try:
-        L = len(satE)
-        if L == 3: self.satEphemUncert = sp.vequ(*satE)
-        else     : self.satEphemUncert = sp.vpack(0e0, satE[0], 0e0)
-      except     : self.satEphemUncert = sp.vpack(0e0, satE, 0e0)
+      self.satEphemUncertArg = self.satEphemUncert = satE
 
       self.pluEphemUncert = numpy.zeros(3,dtype=numpy.float64)
       self.pluEphemUncertSource = ''
@@ -134,8 +134,21 @@ class PBESTRUCT:
 
 ########################################################################
 class PBE:
+  """
+Combine one, or three, flyby uncertainties:
+  abc0      - Spacecraft-Primary*; from pbeStr.baseSigmas
+  abcPri    - Primary-Barycenter**; RTN RSSed into ABC frame
+  abcTarg   - Barycenter-Target**; RTN RSSed into ABC frame
+
+  * always used
+  ** only used if Target is not primary
+
+"""
   def __init__(self,iUTC,idEt,pbeStr,pStE=None):
 
+    ####################################################################
+    ### Spacecraft-primary uncertainties
+    ####################################################################
     abc0Sq = pbeStr.baseSigmas*pbeStr.baseSigmas  ### Apply sigma multiplier later
 
     j2u = pbeStr.mtx_j2k2Uncert
@@ -195,77 +208,99 @@ class PBE:
 
     ##################################################################
     ### Plump ellipse:
-    ### * Use function FINDSATEPHUNCABC
+    ### * Use class FINDSATEPHUNCABC
 
     kxttrg = pbeStr.kinetx.Tca.Target
 
-    ### - Square of Target uncertainties wrt Pluto barycenter
+    ### - Square of Target uncertainties wrt system barycenter
 
+    ####################################################################
+    ### Target-Barycenter uncertainties
+    ####################################################################
     abcTargStr = FINDSATEPHUNCABC(pbeStr.TargName
-                                 ,sigmaRTN=pbeStr.satEphemUncert
+                                 ,sigmaRTN=pbeStr.satEphemUncertArg
                                  ,observer=pbeStr.ObsName
                                  ,tcaTarget=kxttrg
                                  ,etRtnOffset=self.ETminusTCA
                                  )
+    assert abcTargStr.success
+    pbeStr.satEphemUncert = abcTargStr.sigmaRTN
     abcTarg = abcTargStr.sigmaABC
 
-    ### - adjustment to convert to uncertainty wrt Pluto
+    ### - adjustment to convert to uncertainty wrt Pluto/Primary
 
-    ### - For multiple-body MU69 KEM cases, when TargID is 2486958nn,
-    ###   use 2486958 as targIDclass to find correct clause here
-    ### - Otherwise use targID as targIDclass
-
-    targID = pbeStr.TargID
-
-    if targID >= 248695800 and targID < 248695900: targIDclass = 2486958
-    else                                         : targIDclass = targID
-
-    if targIDclass == 2486958:
-      abcPlu = sp.vpack(0,0,0)  ### MU69 single or multiple body:  no other required
-      if iUTC == 0 and idEt == 0:
-        pbeStr.pluEphemUncert = [0e0,0,0]
-        pbeStr.pluEphemUncertSource = 'N/A'
-        if targID != targIDclass and sp.vnorm(abcTarg) == 0e0:
-          print('WARNING:  MU69 satellite barycenter-relative uncertainty is zero; consider using keyword argument satE')
-
-    elif targIDclass == 999:
-      abcPlu = sp.vpack(0,0,0)             ### Pluto:  no other required
+    if abcTargStr.bodyFlag == PRIM:
+      ### Target is Pluto/Primary; no body uncertainties required
+      abcTarg = sp.vpack(0,0,0)
+      abcPri = sp.vpack(0,0,0)
       if iUTC == 0 and idEt == 0:
         pbeStr.pluEphemUncert = [0e0,0,0]
         pbeStr.pluEphemUncertSource = 'N/A'
 
-    elif targIDclass == 901:
-      ### Charon:  add 10% after RSS, 21% after squaring:
-      ###   1.1^2 = 1.21 = 1^2 + sqrt(.21)^2
-      abcPlu = abcTarg * numpy.sqrt(.21e0)
-      if iUTC == 0 and idEt == 0:
-        pbeStr.pluEphemUncert = abcTargStr.sigmaRTN / 10e0
-        pbeStr.pluEphemUncertSource = 'sqrt(.21) of Target (Charon)'
+    elif abcTargStr.bodyFlag == SATE:
 
-    elif targIDclass > 901 and targIDclass < 999: ### Nix & Hydra:  add Pluto
-      abcPlutoStr = FINDSATEPHUNCABC( '999'
-                                    , observer=pbeStr.ObsName
-                                    , sigmaRTN=pStE
-                                    , tcaTarget=kxttrg
-                                    , etRtnOffset=self.ETminusTCA
-                                    )
-      abcPlu = abcPlutoStr.sigmaABC
-      if iUTC == 0 and idEt == 0:
-        pbeStr.pluEphemUncert = abcPlutoStr.sigmaRTN
-        pbeStr.pluEphemUncertSource = abcPlutoStr.sigmaRTNSource
+      ### Uncorrelated target is not Primary:  RSSum uncertainties
+      ### Convert Primary RTN uncertainties to B-Plane (ABC) frame
 
-    else:
-      abcPlu = sp.vpack(0,0,0)  ### Single body?  No other required
+      abcPriStr = FINDSATEPHUNCABC(pbeStr.kinetx.PRIMARY
+                                  ,sigmaRTN=pStE
+                                  ,observer=pbeStr.ObsName
+                                  ,tcaTarget=kxttrg
+                                  ,etRtnOffset=self.ETminusTCA
+                                  )
+      assert abcPriStr.success
+
+      ### Uncorrelated Primary RTN uncertainties in B-Plane frame
+      abcPri = abcPriStr.sigmaABC
+
+      if iUTC == 0 and idEt == 0:
+        pbeStr.pluEphemUncert = list(abcPriStr.sigmaRTN)
+        pbeStr.pluEphemUncertSource = 'Primary uncertainties Root Sum-of-Square with uncorrelated target'
+
+    elif abcTargStr.bodyFlag == CORR:
+
+      ### Correlated Primary RTN uncertainties in B-Plane frame,
+      ### directly summed with satellite RTN uncertainties
+
+      abcPriStr = FINDSATEPHUNCABC(pbeStr.kinetx.PRIMARY
+                                  ,sigmaRTN=pStE
+                                  ,observer=pbeStr.ObsName
+                                  ,tcaTarget=kxttrg
+                                  ,etRtnOffset=self.ETminusTCA
+                                  )
+      assert abcPriStr.success
+
+      ### Calculate magnitudes of primary and target uncertanties
+      pMag = sp.vnorm(abcPriStr.sigmaRTN)
+      tMag = sp.vnorm(abcTargStr.sigmaRTN)
+
+      ### 1) Target uncertainties are zero:  use primary uncertainties
+      ### 2) Non-0 correlated target & primary:  sum uncerts via scaling
+      ### 3) Else primary uncerts are 0:  use target uncerts as-is
+      if tMag == 0.0 : abcTarg = abcPriStr.sigmaABC
+      elif pMag > 0.0: abcTarg = sp.vscl(1.0+(pMag/tMag), abcTarg)
+
+      ### Since primary uncertainties have either been folded into the
+      ### target uncertainties, or are zero, use zero for the local
+      ### primary uncertainties below
+      abcPri = sp.vpack(0,0,0)
+
+      if iUTC == 0 and idEt == 0:
+        pbeStr.pluEphemUncert = list(abcPriStr.sigmaRTN)
+        pbeStr.pluEphemUncertSource = 'Primary uncertainties direct-summed with correlated target, not Root-Sum-of-Squares'
+
+    else: ### abcTargStr.bodyFlag == UNKN:
+      ### Unknown primary/satellite/barycenter configuration
+      assert abcTargStr.bodyFlag == UNKN
+      abcTarg = sp.vpack(0,0,0)
+      abcPri = sp.vpack(0,0,0)
       if iUTC == 0 and idEt == 0:
         pbeStr.pluEphemUncert = [0e0,0,0]
-        pbeStr.pluEphemUncertSource = 'N/A'
-        if targID != targIDclass and sp.vnorm(abcTarg) == 0e0:
-          print('WARNING:  ???? satellite barycenter-relative uncertainty is zero; consider using keyword argument satE')
-
+        pbeStr.pluEphemUncertSource = 'Body uncertainties not used:  unknown primary/satellite/barycenter configuration'
 
     ### RSS Plumped:  sqRt of Sum Squared; scaled by sigma multiple
 
-    abcP = numpy.sqrt(abc0Sq + abcTarg*abcTarg + abcPlu*abcPlu
+    abcP = numpy.sqrt(abc0Sq + abcTarg*abcTarg + abcPri*abcPri
                      ) * pbeStr.sigmaMultiple
 
     self.plumpedABC = abcP

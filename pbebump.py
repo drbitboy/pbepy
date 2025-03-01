@@ -92,7 +92,14 @@ class PBEBUMP:
                                            ,epsilon=epsilon
                                            ,maxIter=maxIter
                                            )
-      if abs(targRadius - tangInfo.height) < 1e-10: break
+      try:
+        if abs(targRadius - tangInfo.height) < 1e-10: break
+      except:
+        import pprint
+        print(tangInfo)
+        pprint.pprint(vars(tangInfo))
+        raise
+
       aimPt = sp.vsub(tangInfo.surfpt, sp.vscl(targRadius,planeNorm))
 
     self.iter = itercount

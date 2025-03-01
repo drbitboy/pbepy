@@ -254,7 +254,7 @@ class FINDTCA:
       self.obs_pos_j2k = sp.vscl(-1e0,targPosJ2k)
       self.obs_vel_j2k = sp.vscl(-1e0,targVelJ2k)
       self.miss_distance = sp.vnorm(stOut[:3])
-      self.speed = sp.vnorm(stOut[3:5])
+      self.speed = sp.vnorm(stOut[3:])
 
       ### Define trajectory plane reference frame as:
       ###   XY plane contains obs to targ and obs velocity

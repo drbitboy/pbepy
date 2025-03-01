@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os
 import sys
 import numpy
@@ -422,3 +424,37 @@ Component PBE_ROOT
 EndComponent
 BoundRadius {boundRad}
 """.lstrip('\r\n'))
+
+########################################################################
+if "__main__" == __name__:
+  try:
+    L = len(sys.argv)
+    target,observer,kerns,mdlpath = sys.argv[1:5]
+    kerns = kerns.split(',')
+    radi = L > 5 and float(sys.argv[5]) or 0.0
+    sigm = L > 8 and list(map(float,sys.argv[6:9])) or None
+    satE = L > 11 and list(map(float,sys.argv[9:12])) or 0.0
+    pStE = L > 14 and list(map(float,sys.argv[12:15])) or None
+
+    """Instantiate  PBE structure"""
+    import pprint
+    pprint.pprint(dict(pbe2mdl_main=locals()))
+    from pbecalcs import PBESTRUCT
+    pbec = PBESTRUCT(targArg=target,obsArg=observer,kern=kerns
+                    ,radi=radi,sigm=sigm,satE=satE,pStE=pStE
+                    )
+    """Write MDL file from that PBE structure"""
+    pbe2mdl(pbec,radi,mdlpath,mtxJ2k2UncertArg=pbec.mtx_j2k2Uncert)
+  except:
+    if 'DEBUG' in os.environ:
+      import traceback as tb
+      tb.print_exc()
+    print("""
+Usage:
+
+  pbe2mdl.py target observer kernel[,kernel[,...]] MDLpath \\
+             [radius_bump \\
+             [scTOF,km      scBnorm,km    scBmag,km \\
+             [targetR,km    targetT,km    targetN,km   \\
+             [primaryR,km   primaryT,km   primaryN,km]]]]
+""")

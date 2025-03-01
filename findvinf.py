@@ -50,16 +50,34 @@ class FINDVINF:
       ts = (numpy.arange(n)*36e2) + (etTca - self.VinfEtOffs)
       vsTarg = numpy.zeros(3*n,dtype=numpy.float64).reshape((-1,3,))
       vsObs = numpy.zeros(3*n,dtype=numpy.float64).reshape((-1,3,))
-      try   : targNum = sp.bodn2c(caOut.Target)
-      except: targNum = int(caOut.Target)
-      if (targNum >= 100 and targNum < 1000
-         ) or (targNum >= 248695800 and targNum < 248695900
-         ):
+      targNum = sp.bods2c(caOut.Target)
+
+      try:
+        import kinetxcurrent
+        kmodule = kinetxcurrent.kinetxcurrent(caOut.Target,initialize=False)
+        if kmodule.PRIMARY_BARYCENTER:
+          ### Get Barycenter of body, if it exists ...
+          import sys
+          ###sys.stdout.flush()
+          ###print(dict(PRIMARY_BARYCENTER=kmodule.PRIMARY_BARYCENTER,kmodule=kmodule))
+          ###sys.stdout.flush()
+          baryID = sp.bods2c(kmodule.PRIMARY_BARYCENTER)
+        else:
+          ### ... else assume target is non-binary
+          baryID = targNum
+      except:
+        ### ... else use SPICE planetary convention:
+        ###
+        ###        N = barycenter; N*100 + K = body
+
+        assert targNum >= 100 and targNum < 1000
         baryID = targNum // 100
-      else:
-        baryID = targNum
 
       baryName = sp.bodc2s(baryID)
+
+      ### Use primary as barycenter if barycenter is not in loaded SPKs
+      try   : sp.spkezr(caOut.Target,etTca,'j2000','none',baryName)
+      except: baryName = kmodule.PRIMARY
 
       vsTarg = numpy.vstack(
          [sp.spkezr(caOut.Target,t,'j2000','none',baryName)[0][:3]
@@ -163,6 +181,7 @@ class FINDVINF:
       self.tdbRTNCaldate = rtnTDBCaldate + ' TDB (SPICE ETCAL)'
       self.tdbRTN_sPastJ2k = etRtn
       self.Rtn_Offset_s = etRtnOffset
+      self.baryName = baryName
 
       self.success = True
       self.status = 'Vinf CALC SUCCEEDED'
